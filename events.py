@@ -8,7 +8,13 @@ async def on_document_posted(payload: dict, ctx) -> None:
     """Заказ проведён в 1С → планируем отгрузку (sales → logistics)."""
     if payload.get("kind") != "order" or ctx is None:
         return
-    ctx.session.add(Shipment(customer=payload.get("counterparty", ""), status="planned"))
+    ctx.session.add(
+        Shipment(
+            customer=payload.get("counterparty", ""),
+            deal_id=payload.get("deal_id"),
+            status="planned",
+        )
+    )
     ctx.services.event_bus.emit(
         ctx.session,
         "logistics.shipment.created",

@@ -19,3 +19,8 @@ class ShipmentOut(BaseModel):
     address: str
     carrier: str
     status: str
+    deal_id: int | None = None
+
+
+class StatusUpdate(BaseModel):
+    status: str
