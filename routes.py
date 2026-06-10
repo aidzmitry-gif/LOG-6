@@ -18,9 +18,13 @@ from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
 from modules.logistics.models import Carrier, ImportShipment, Shipment
 from modules.logistics.schemas import (
+    CarrierCatalogItem,
+    CarrierCostStat,
     CarrierCreate,
+    CarrierOrderRequest,
     CarrierOut,
     CarrierStat,
+    CostReportOut,
     DashboardOut,
     ImportShipmentCreate,
     ImportShipmentOut,
@@ -28,14 +32,18 @@ from modules.logistics.schemas import (
     ShipmentCreate,
     ShipmentOut,
     StatusUpdate,
+    TrackingUpdate,
 )
+from modules.logistics.schemas import CARRIERS_RB
 from modules.logistics.stages import DELIVERY_STAGES, IMPORT_STAGES
 
 router = APIRouter(tags=["logistics"])
 
 DELIVERED_STATUS = "delivered"  # доставка завершена → закрытие сделки (logistics → sales)
+ASSIGNED_STATUS = "assigned"    # перевозчик назначен / заказ у перевозчика оформлен
 WAREHOUSE_STAGE = "warehouse"   # импорт принят на склад (информационное событие)
 CUSTOMS_STAGE = "customs"
+CLIENT_PAYER = "клиент"         # доставка за счёт клиента (не расход компании)
 
 
 def _route(frm: str, to: str, fallback: str = "") -> str:
@@ -50,7 +58,15 @@ def _qty_tag(qty: int) -> list[str]:
 
 # --- Карточки воронок ---------------------------------------------------------
 def _shipment_card(r: Shipment) -> FunnelCard:
-    tags = [t for t in (r.cargo, f"{float(r.weight_kg):g} кг" if r.weight_kg else "") if t]
+    tags = [
+        t
+        for t in (
+            r.cargo,
+            f"{float(r.weight_kg):g} кг" if r.weight_kg else "",
+            f"№ {r.carrier_order_no}" if r.carrier_order_no else "",
+        )
+        if t
+    ]
     return FunnelCard(
         id=r.id,
         code=r.number or f"ЛОГ-{r.id}",
@@ -61,6 +77,7 @@ def _shipment_card(r: Shipment) -> FunnelCard:
         status_tag=r.carrier,
         owner=r.owner,
         date=r.eta or "",
+        next_step=r.tracking_status,
         score=f"📍 {r.tracking_no}" if r.tracking_no else "",
         insight=r.insight,
         tags=tags,
@@ -140,6 +157,83 @@ async def update_shipment(
     return obj
 
 
+@router.post("/shipments/{shipment_id}/carrier-order", response_model=ShipmentOut)
+async def create_carrier_order(
+    shipment_id: int,
+    payload: CarrierOrderRequest,
+    core: Core = Depends(get_core),
+    session: AsyncSession = Depends(get_session),
+):
+    """Оформить заказ на доставку у перевозчика (DPD / Автолайт Экспресс / …, log-5).
+
+    Прототип: фиксирует перевозчика и тариф (расход на доставку), генерирует
+    № заказа, при необходимости трек-номер, переводит доставку в ``assigned`` и
+    публикует ``logistics.carrier_order.created``. Реальный вызов API перевозчика
+    (создание накладной и получение трек-номера) — Итерация 1.
+    """
+    obj = await session.get(Shipment, shipment_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Отгрузка не найдена")
+
+    code = payload.carrier_code or obj.carrier_code
+    name = payload.carrier or obj.carrier
+    if code and not name:
+        match = next((c for c in CARRIERS_RB if c["code"] == code), None)
+        if match:
+            name = match["name"]
+    if not name:
+        raise HTTPException(status_code=400, detail="Не указан перевозчик")
+
+    obj.carrier_code = code
+    obj.carrier = name
+    obj.carrier_order_no = payload.carrier_order_no or f"{(code or 'CRR').upper()}-2026-{obj.id:04d}"
+    if payload.tracking_no:
+        obj.tracking_no = payload.tracking_no
+    if payload.shipping_cost is not None:
+        obj.amount = Decimal(str(payload.shipping_cost))
+    if payload.payer:
+        obj.payer = payload.payer
+    if payload.eta:
+        obj.eta = payload.eta
+    if obj.status == "planned":
+        obj.status = ASSIGNED_STATUS
+
+    core.event_bus.emit(
+        session,
+        "logistics.carrier_order.created",
+        {
+            "shipment_id": obj.id,
+            "carrier": obj.carrier,
+            "carrier_order_no": obj.carrier_order_no,
+            "amount": float(obj.amount),
+            "entity_ref": f"shipment:{obj.id}",
+        },
+    )
+    await session.commit()
+    await session.refresh(obj)
+    return obj
+
+
+@router.patch("/shipments/{shipment_id}/tracking", response_model=ShipmentOut)
+async def update_tracking(
+    shipment_id: int,
+    payload: TrackingUpdate,
+    session: AsyncSession = Depends(get_session),
+):
+    """Обновить статус трекинга от перевозчика (текстовый статус + ETA + трек-номер)."""
+    obj = await session.get(Shipment, shipment_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Отгрузка не найдена")
+    obj.tracking_status = payload.tracking_status
+    if payload.eta is not None:
+        obj.eta = payload.eta
+    if payload.tracking_no is not None:
+        obj.tracking_no = payload.tracking_no
+    await session.commit()
+    await session.refresh(obj)
+    return obj
+
+
 # --- Импорт из Китая (log-2, log-4) -------------------------------------------
 @router.get("/imports", response_model=list[ImportShipmentOut])
 async def list_imports(session: AsyncSession = Depends(get_session)):
@@ -204,6 +298,29 @@ async def update_import(
 
 
 # --- Перевозчики (log-1, log-5) -----------------------------------------------
+@router.get("/carriers/catalog", response_model=list[CarrierCatalogItem])
+async def carriers_catalog() -> list[CarrierCatalogItem]:
+    """Справочник известных перевозчиков РБ (DPD, Автолайт Экспресс, СДЭК, …)."""
+    return [CarrierCatalogItem(**c) for c in CARRIERS_RB]
+
+
+@router.post("/carriers/seed", response_model=list[CarrierOut])
+async def seed_carriers(session: AsyncSession = Depends(get_session)):
+    """Заполнить реестр перевозчиками РБ из каталога (идемпотентно — по ``code``)."""
+    existing = {
+        c.code for c in (await session.execute(select(Carrier))).scalars().all() if c.code
+    }
+    for item in CARRIERS_RB:
+        if item["code"] in existing:
+            continue
+        session.add(Carrier(
+            name=item["name"], code=item["code"], kind=item["kind"], mode=item["mode"],
+            integration=item["integration"], track_url=item["track_url"],
+        ))
+    await session.commit()
+    return (await session.execute(select(Carrier).order_by(Carrier.id.desc()))).scalars().all()
+
+
 @router.get("/carriers", response_model=list[CarrierOut])
 async def list_carriers(session: AsyncSession = Depends(get_session)):
     """Реестр перевозчиков и подрядчиков с метриками надёжности."""
@@ -220,10 +337,27 @@ async def create_carrier(payload: CarrierCreate, session: AsyncSession = Depends
     return obj
 
 
-# --- Дашборд логистики (log-8) ------------------------------------------------
+# --- Дашборд и расходы логистики (log-8) --------------------------------------
+def _company_cost_by_carrier(shipments) -> list[CarrierCostStat]:
+    """Расход компании на доставку (payer != клиент) в разрезе перевозчика, BYN."""
+    agg: dict[str, dict] = {}
+    for s in shipments:
+        if s.payer == CLIENT_PAYER:
+            continue
+        name = s.carrier or "Без перевозчика"
+        row = agg.setdefault(name, {"shipments": 0, "cost": Decimal("0")})
+        row["shipments"] += 1
+        row["cost"] += s.amount or Decimal("0")
+    stats = [
+        CarrierCostStat(carrier=name, shipments=v["shipments"], cost=float(v["cost"]))
+        for name, v in agg.items()
+    ]
+    return sorted(stats, key=lambda x: x.cost, reverse=True)
+
+
 @router.get("/dashboard", response_model=DashboardOut)
 async def dashboard(session: AsyncSession = Depends(get_session)) -> DashboardOut:
-    """KPI логистики: грузы в пути, на таможне, среднее время доставки, OTD, стоимость."""
+    """KPI логистики: грузы в пути, на таможне, среднее время доставки, OTD, расходы."""
     shipments = (await session.execute(select(Shipment))).scalars().all()
     imports = (await session.execute(select(ImportShipment))).scalars().all()
     carriers = (await session.execute(select(Carrier))).scalars().all()
@@ -241,6 +375,9 @@ async def dashboard(session: AsyncSession = Depends(get_session)) -> DashboardOu
 
     cost = sum((s.amount or Decimal("0")) for s in shipments if s.status != DELIVERED_STATUS)
     cost += sum((i.amount or Decimal("0")) for i in imports if i.stage != WAREHOUSE_STAGE)
+    company_cost = sum(
+        (s.amount or Decimal("0")) for s in shipments if s.payer != CLIENT_PAYER
+    )
 
     return DashboardOut(
         in_transit=delivery_in_transit + import_in_transit + at_customs,
@@ -251,6 +388,7 @@ async def dashboard(session: AsyncSession = Depends(get_session)) -> DashboardOu
         avg_delivery_days=avg_delivery_days,
         on_time_pct=on_time_pct,
         logistics_cost=float(cost),
+        shipping_cost_company=float(company_cost),
         carriers=[
             CarrierStat(
                 name=c.name,
@@ -261,4 +399,25 @@ async def dashboard(session: AsyncSession = Depends(get_session)) -> DashboardOu
             )
             for c in active
         ],
+        cost_by_carrier=_company_cost_by_carrier(shipments),
+    )
+
+
+@router.get("/costs", response_model=CostReportOut)
+async def costs_report(session: AsyncSession = Depends(get_session)) -> CostReportOut:
+    """Отчёт по расходам на перевозку (log-8): всего, компания/клиент, по перевозчикам."""
+    shipments = (await session.execute(select(Shipment))).scalars().all()
+    imports = (await session.execute(select(ImportShipment))).scalars().all()
+
+    total = sum((s.amount or Decimal("0")) for s in shipments)
+    client = sum((s.amount or Decimal("0")) for s in shipments if s.payer == CLIENT_PAYER)
+    company = total - client
+    import_cost = sum((i.amount or Decimal("0")) for i in imports)
+
+    return CostReportOut(
+        total=float(total),
+        company=float(company),
+        client=float(client),
+        import_cost=float(import_cost),
+        by_carrier=_company_cost_by_carrier(shipments),
     )
