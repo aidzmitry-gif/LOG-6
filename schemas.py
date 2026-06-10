@@ -12,14 +12,18 @@ class ShipmentCreate(BaseModel):
     route_from: str = ""
     route_to: str = ""
     carrier: str = ""
+    carrier_code: str = ""
+    carrier_order_no: str = ""
     cargo: str = ""
     weight_kg: float = 0
-    amount: float = 0
+    amount: float = 0          # тариф перевозчика (расход на доставку), BYN
+    payer: str = "компания"    # кто оплачивает доставку (компания/клиент)
     priority: str = "Средний"
     owner: str = ""
     status: str = "planned"
     eta: str | None = None
     tracking_no: str = ""
+    tracking_status: str = ""
     deal_id: int | None = None
 
 
@@ -33,14 +37,18 @@ class ShipmentOut(BaseModel):
     route_from: str = ""
     route_to: str = ""
     carrier: str = ""
+    carrier_code: str = ""
+    carrier_order_no: str = ""
     cargo: str = ""
     weight_kg: float = 0
     amount: float = 0
+    payer: str = "компания"
     priority: str = "Средний"
     owner: str = ""
     status: str
     eta: str | None = None
     tracking_no: str = ""
+    tracking_status: str = ""
     deal_id: int | None = None
     insight: str = ""
 
@@ -104,10 +112,12 @@ class ImportStageUpdate(BaseModel):
 # --- Перевозчики --------------------------------------------------------------
 class CarrierCreate(BaseModel):
     name: str
+    code: str = ""
     kind: str = "РБ"
     mode: str = "авто"
     contact: str = ""
     integration: str = "manual"
+    track_url: str = ""
     on_time_pct: int = 0
     avg_days: int = 0
     shipments_count: int = 0
@@ -119,17 +129,55 @@ class CarrierOut(BaseModel):
 
     id: int
     name: str
+    code: str = ""
     kind: str
     mode: str
     contact: str = ""
     integration: str
+    track_url: str = ""
     on_time_pct: int
     avg_days: int
     shipments_count: int
     active: bool
 
 
-# --- Дашборд логистики (log-8) ------------------------------------------------
+class CarrierCatalogItem(BaseModel):
+    """Элемент справочника известных перевозчиков РБ (для выбора в UI, log-5)."""
+
+    code: str
+    name: str
+    kind: str
+    mode: str
+    integration: str
+    track_url: str = ""
+
+
+class CarrierOrderRequest(BaseModel):
+    """Оформление заказа у перевозчика (DPD / Автолайт Экспресс / …).
+
+    В прототипе создаёт заказ локально: фиксирует перевозчика, тариф (расход),
+    трек-номер и переводит доставку в статус ``assigned``. Реальный вызов API
+    перевозчика (создание накладной, забор трек-номера) — Итерация 1 (log-5).
+    """
+
+    carrier_code: str = ""              # slug из каталога; либо произвольный carrier
+    carrier: str = ""                   # название (если перевозчик не из каталога)
+    carrier_order_no: str = ""          # № накладной у перевозчика (если уже есть)
+    tracking_no: str = ""               # трек-номер (если уже выдан)
+    shipping_cost: float | None = None  # тариф перевозчика, BYN
+    payer: str | None = None            # кто платит (компания/клиент)
+    eta: str | None = None
+
+
+class TrackingUpdate(BaseModel):
+    """Обновление статуса трекинга от перевозчика (текстовый статус + ETA)."""
+
+    tracking_status: str
+    eta: str | None = None
+    tracking_no: str | None = None
+
+
+# --- Дашборд и расходы логистики (log-8) --------------------------------------
 class CarrierStat(BaseModel):
     name: str
     kind: str
@@ -138,13 +186,50 @@ class CarrierStat(BaseModel):
     avg_days: int
 
 
+class CarrierCostStat(BaseModel):
+    """Расход на доставку в разрезе перевозчика, BYN."""
+
+    carrier: str
+    shipments: int
+    cost: float
+
+
 class DashboardOut(BaseModel):
-    in_transit: int            # всего грузов в пути (доставка + импорт в движении + таможня)
-    delivery_in_transit: int   # доставки РБ/РФ в пути
-    import_in_transit: int     # импорт в движении (консолидация + плечо)
-    at_customs: int            # на таможенном оформлении
-    delivered_total: int       # доставлено (накопительно)
-    avg_delivery_days: float   # среднее время доставки по активным перевозчикам
-    on_time_pct: float         # средний OTD по активным перевозчикам, %
-    logistics_cost: float      # стоимость логистики в работе, BYN
+    in_transit: int             # всего грузов в пути (доставка + импорт в движении + таможня)
+    delivery_in_transit: int    # доставки РБ/РФ в пути
+    import_in_transit: int      # импорт в движении (консолидация + плечо)
+    at_customs: int             # на таможенном оформлении
+    delivered_total: int        # доставлено (накопительно)
+    avg_delivery_days: float    # среднее время доставки по активным перевозчикам
+    on_time_pct: float          # средний OTD по активным перевозчикам, %
+    logistics_cost: float       # стоимость логистики в работе, BYN
+    shipping_cost_company: float  # расход компании на доставку РБ/РФ (payer = компания), BYN
     carriers: list[CarrierStat]
+    cost_by_carrier: list[CarrierCostStat]
+
+
+class CostReportOut(BaseModel):
+    """Отчёт по расходам на перевозку (log-8): итоги и разбивка по перевозчикам."""
+
+    total: float                # все расходы на доставку РБ/РФ, BYN
+    company: float              # за счёт компании, BYN
+    client: float               # за счёт клиента, BYN
+    import_cost: float          # себестоимость доставки импорта, BYN
+    by_carrier: list[CarrierCostStat]
+
+
+# --- Справочник перевозчиков РБ (сиды + каталог, log-5) -----------------------
+# Способ интеграции в прототипе: manual/csv. Реальные API — Итерация 1+.
+# track_url — шаблон ссылки трекинга ({n} = трек-номер), уточняется при подключении.
+CARRIERS_RB: list[dict] = [
+    {"code": "dpd", "name": "DPD", "kind": "РБ", "mode": "авто",
+     "integration": "api", "track_url": "https://www.dpd.by/tracking/?number={n}"},
+    {"code": "autolight", "name": "Автолайт Экспресс", "kind": "РБ", "mode": "авто",
+     "integration": "csv", "track_url": "https://autolight.by/tracking/?number={n}"},
+    {"code": "cdek", "name": "СДЭК", "kind": "РБ/СНГ", "mode": "авто",
+     "integration": "api", "track_url": "https://www.cdek.by/tracking?order_id={n}"},
+    {"code": "evropochta", "name": "Европочта", "kind": "РБ", "mode": "авто",
+     "integration": "csv", "track_url": "https://evropochta.by/tracking/?number={n}"},
+    {"code": "belpost", "name": "Белпочта", "kind": "РБ", "mode": "авто",
+     "integration": "manual", "track_url": "https://webservices.belpost.by/searchRu/{n}"},
+]
