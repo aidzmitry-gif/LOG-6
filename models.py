@@ -29,14 +29,18 @@ class Shipment(Base):
     route_from: Mapped[str] = mapped_column(String(128), default="", server_default="")
     route_to: Mapped[str] = mapped_column(String(128), default="", server_default="")
     carrier: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    carrier_code: Mapped[str] = mapped_column(String(32), default="", server_default="")  # slug из каталога (dpd/autolight/...)
+    carrier_order_no: Mapped[str] = mapped_column(String(64), default="", server_default="")  # № заказа/накладной у перевозчика
     cargo: Mapped[str] = mapped_column(String(255), default="", server_default="")
     weight_kg: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"), server_default="0")
-    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), server_default="0")
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), server_default="0")  # тариф перевозчика (расход на доставку), BYN
+    payer: Mapped[str] = mapped_column(String(32), default="компания", server_default="компания")  # кто оплачивает доставку (компания/клиент)
     priority: Mapped[str] = mapped_column(String(32), default="Средний", server_default="Средний")
     owner: Mapped[str] = mapped_column(String(128), default="", server_default="")
     status: Mapped[str] = mapped_column(String(32), default="planned", server_default="planned")
     eta: Mapped[str | None] = mapped_column(String(32))
     tracking_no: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    tracking_status: Mapped[str] = mapped_column(String(128), default="", server_default="")  # последний статус от перевозчика
     deal_id: Mapped[int | None] = mapped_column(Integer)
     insight: Mapped[str] = mapped_column(String(400), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -81,7 +85,8 @@ class Carrier(Base):
 
     Метрики (``on_time_pct``, ``avg_days``) питают дашборд логистики (log-8).
     Способ интеграции (``integration``: api/csv/edi/manual) — под коннекторы (log-5);
-    в прототипе обмен ручной/файловый, реальные API — Итерация 1+.
+    в прототипе обмен ручной/файловый, реальные API — Итерация 1+. ``track_url`` —
+    шаблон ссылки трекинга ({n} = трек-номер); ``code`` — slug каталога.
     """
 
     __tablename__ = "carrier"
@@ -89,10 +94,12 @@ class Carrier(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
+    code: Mapped[str] = mapped_column(String(32), default="", server_default="")  # slug для связи и сидов (dpd/autolight/...)
     kind: Mapped[str] = mapped_column(String(32), default="РБ", server_default="РБ")
     mode: Mapped[str] = mapped_column(String(32), default="авто", server_default="авто")
     contact: Mapped[str] = mapped_column(String(255), default="", server_default="")
     integration: Mapped[str] = mapped_column(String(16), default="manual", server_default="manual")
+    track_url: Mapped[str] = mapped_column(String(255), default="", server_default="")  # шаблон ссылки трекинга, {n} = трек-номер
     on_time_pct: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     avg_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     shipments_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
