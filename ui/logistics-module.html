@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Логистика · CMR-ERP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F4F5F7; --surface:#FFFFFF; --surface-2:#F9FAFB; --surface-3:#F3F4F6;
+    --border:#E8EAED; --border-2:#E1E4E8; --border-strong:#D5D9DF;
+    --text:#111827; --text-2:#5B6472; --text-3:#9099A6;
+    --primary:#2563EB; --primary-d:#1D4ED8; --primary-light:#EEF4FF; --primary-ring:#BFD3FF;
+    --violet:#7C5CFC; --violet-2:#8B5CF6; --violet-light:#F4F2FF; --violet-border:#D9CFFB;
+    --stage-blue:#3B82F6; --stage-violet:#8B5CF6; --stage-amber:#F59E0B; --stage-pink:#EC4899; --stage-green:#22C55E;
+    --pri-high:#E5484D; --pri-high-bg:#FEF1F1; --pri-mid:#D9820B; --pri-mid-bg:#FEF6E9; --pri-low:#0E9F6E; --pri-low-bg:#EAF8F1;
+    --ch-phone:#2563EB; --ch-wa:#22C35E; --ch-viber:#7360F2; --ch-tg:#229ED9; --ch-mail:#7A8494;
+    --ok:#0E9F6E; --ok-bg:#EAF8F1; --warn:#D9820B; --warn-bg:#FEF6E9; --bad:#E5484D; --bad-bg:#FEF1F1;
+    --shadow-sm:0 1px 2px rgba(16,24,40,.04),0 1px 3px rgba(16,24,40,.06);
+    --shadow-md:0 4px 12px rgba(16,24,40,.08);
+    --shadow-lg:0 16px 48px rgba(16,24,40,.22);
+    --radius:14px; --radius-sm:10px; --radius-xs:8px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:'Golos Text',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  svg{display:block}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:#D3D7DE;border-radius:8px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#BCC2CC}
+  :focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:6px}
+
+  .app{display:grid;grid-template-columns:236px minmax(0,1fr) 320px;height:100vh;overflow:hidden}
+
+  /* Sidebar */
+  .sidebar{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+  .brand{display:flex;align-items:center;gap:10px;padding:18px 18px 14px}
+  .brand-mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#3B82F6,#2563EB);display:grid;place-items:center;color:#fff;font-weight:800;font-size:13px;box-shadow:0 2px 6px rgba(37,99,235,.35)}
+  .brand-name{font-weight:800;font-size:16px;letter-spacing:.2px}
+  .nav{flex:1;overflow-y:auto;padding:6px 12px 12px}
+  .nav-label{font-size:10.5px;font-weight:700;letter-spacing:.6px;color:var(--text-3);text-transform:uppercase;padding:14px 10px 6px}
+  .nav-item{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:var(--radius-sm);color:var(--text-2);font-weight:500;font-size:13px;margin-bottom:1px;position:relative;transition:background .12s,color .12s}
+  .nav-item svg{width:18px;height:18px;flex-shrink:0;stroke-width:1.9}
+  .nav-item:hover{background:var(--surface-3);color:var(--text)}
+  .nav-item.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(37,99,235,.28)}
+  .nav-sub{display:flex;flex-direction:column;margin:2px 0 6px 30px;gap:1px}
+  .nav-sub a{padding:6px 10px;border-radius:8px;color:var(--text-2);font-size:12.5px;font-weight:500}
+  .nav-sub a:hover{background:var(--surface-3);color:var(--text)}
+  .nav-sub a.on{color:var(--primary);font-weight:600}
+  .sidebar-foot{border-top:1px solid var(--border);padding:12px 14px;display:flex;align-items:center;gap:10px}
+  .avatar{width:34px;height:34px;border-radius:10px;background:#DCE3EE;display:grid;place-items:center;font-weight:700;color:#3B5780;font-size:12px;flex-shrink:0}
+  .who{flex:1;min-width:0}
+  .who b{display:block;font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .who span{font-size:11px;color:var(--text-3)}
+
+  /* Main */
+  .main{display:flex;flex-direction:column;overflow:hidden;min-width:0}
+  .topbar{display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .crumb{font-size:16px;font-weight:700}
+  .crumb .dim{color:var(--text-3);font-weight:600}
+  .crumb .cur{color:var(--text)}
+  .search{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border-2);border-radius:10px;padding:8px 12px;width:240px;color:var(--text-3)}
+  .search input{border:none;background:none;outline:none;font-family:inherit;font-size:12.5px;color:var(--text);width:100%}
+  .search svg{width:15px;height:15px;flex-shrink:0;stroke-width:2}
+  .btn{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:10px;font-weight:600;font-size:12.5px;border:1px solid var(--border-2);background:var(--surface);color:var(--text-2);transition:background .12s,border-color .12s}
+  .btn svg{width:15px;height:15px;stroke-width:2}
+  .btn:hover{background:var(--surface-2);border-color:var(--border-strong);color:var(--text)}
+  .btn-primary{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.28)}
+  .btn-primary:hover{background:var(--primary-d);border-color:var(--primary-d);color:#fff}
+  .ai-toggle{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border-radius:10px;border:1px dashed var(--violet-border);background:var(--violet-light);color:var(--violet)}
+  .ai-toggle svg{width:15px;height:15px;stroke-width:2}
+  .ai-toggle b{font-size:12px;font-weight:700}
+  .switch{width:30px;height:17px;border-radius:20px;background:#D9CFFB;position:relative;flex-shrink:0;transition:background .15s}
+  .switch::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .15s}
+  body.ai-on .switch{background:var(--violet)}
+  body.ai-on .switch::after{left:15px}
+  .icon-btn{width:34px;height:34px;border-radius:10px;border:1px solid var(--border-2);display:grid;place-items:center;color:var(--text-2);position:relative}
+  .icon-btn svg{width:16px;height:16px;stroke-width:2}
+  .icon-btn:hover{background:var(--surface-2);color:var(--text)}
+  .dot-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:10px;background:var(--pri-high);color:#fff;font-size:9.5px;font-weight:700;display:grid;place-items:center;border:2px solid var(--surface)}
+
+  /* Tabs */
+  .tabs{display:flex;gap:4px;padding:0 22px;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
+  .tab{padding:12px 14px 13px;font-weight:600;font-size:13px;color:var(--text-2);border-bottom:2px solid transparent;display:flex;align-items:center;gap:8px;white-space:nowrap;transition:color .12s}
+  .tab svg{width:16px;height:16px;stroke-width:2}
+  .tab .cnt{background:var(--surface-3);color:var(--text-2);font-size:11px;font-weight:700;padding:1px 7px;border-radius:8px}
+  .tab .cnt.alert{background:var(--pri-high-bg);color:var(--pri-high)}
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+  .tab.active .cnt{background:var(--primary-light);color:var(--primary)}
+  .tab.active .cnt.alert{background:var(--pri-high-bg);color:var(--pri-high)}
+
+  .scroll{flex:1;overflow-y:auto;overflow-x:hidden}
+  .panel{display:none}
+  .panel.show{display:block}
+
+  /* KPI */
+  .kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;padding:16px 22px 4px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px;box-shadow:var(--shadow-sm)}
+  .kpi.alert{border-color:#F5C6C7;background:linear-gradient(180deg,#FFF8F8,#fff)}
+  .kpi-top{display:flex;align-items:center;gap:9px;color:var(--text-2);font-size:12px;font-weight:600;margin-bottom:9px}
+  .kpi-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex-shrink:0}
+  .kpi-ic svg{width:15px;height:15px;stroke-width:2}
+  .kpi-val{font-size:23px;font-weight:800;letter-spacing:-.4px;line-height:1}
+  .kpi-val small{font-size:13px;font-weight:600;color:var(--text-3)}
+  .kpi-val.bad{color:var(--bad)}
+  .kpi-sub{font-size:11.5px;margin-top:6px;color:var(--text-3);font-weight:500}
+  .delta{font-weight:700}
+  .delta.up{color:var(--ok)} .delta.down{color:var(--bad)}
+
+  /* Board */
+  .board-wrap{padding:14px 22px 0}
+  .board{display:flex;gap:14px;overflow-x:auto;padding-bottom:14px;align-items:flex-start}
+  .column{flex:0 0 312px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);display:flex;flex-direction:column;max-height:calc(100vh - 348px)}
+  .col-head{padding:13px 14px 11px;border-top-left-radius:var(--radius);border-top-right-radius:var(--radius);border-top:3px solid var(--stage-blue);background:var(--surface)}
+  .col-title{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .col-title b{font-size:13px;font-weight:700}
+  .col-title .pill{font-size:11px;font-weight:700;color:var(--text-2);background:var(--surface-3);border-radius:8px;padding:1px 8px}
+  .col-sum{font-size:11.5px;color:var(--text-3);font-weight:600;margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sla-warn{color:var(--bad);font-weight:700;display:inline-flex;align-items:center;gap:4px}
+  .sla-warn svg{width:12px;height:12px;stroke-width:2.4}
+  .col-body{padding:10px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+
+  /* Card */
+  .card{background:var(--surface);border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:12px;box-shadow:var(--shadow-sm);transition:box-shadow .14s,border-color .14s;position:relative}
+  .card:hover{box-shadow:var(--shadow-md);border-color:var(--border-strong)}
+  .card.focus{border-color:var(--primary-ring);box-shadow:0 0 0 3px rgba(37,99,235,.08)}
+  .card.overdue{border-color:#F3B6B7}
+  .card.overdue::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--bad)}
+  .card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px}
+  .card-id{font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.2px}
+  .card-top-r{display:flex;align-items:center;gap:6px}
+  .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:7px;white-space:nowrap}
+  .b-high{color:var(--pri-high);background:var(--pri-high-bg)}
+  .b-mid{color:var(--pri-mid);background:var(--pri-mid-bg)}
+  .b-low{color:var(--pri-low);background:var(--pri-low-bg)}
+  .b-overdue{color:#fff;background:var(--bad);display:inline-flex;align-items:center;gap:3px}
+  .b-overdue svg{width:10px;height:10px;stroke-width:2.6}
+  .star{width:18px;height:18px;color:var(--text-3)}
+  .star.on{color:#F2B600}
+  .star svg{width:16px;height:16px;stroke-width:1.8}
+  .card-title{font-size:13.5px;font-weight:700;letter-spacing:-.1px;margin-bottom:2px}
+  .card-sub{font-size:12px;color:var(--text-2);margin-bottom:8px}
+  .card-amount{font-size:15px;font-weight:800;letter-spacing:-.2px;margin-bottom:8px}
+  .card-amount .cur{font-size:11px;font-weight:700;color:var(--text-3);margin-left:2px}
+  .card-amount .by-client{font-size:10px;font-weight:700;color:var(--text-3)}
+  .card-amount.muted{color:var(--text-3);font-size:12.5px;font-weight:600}
+  .cargo-line{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border-2);border-radius:8px;padding:5px 8px;margin-bottom:8px}
+  .cargo-line svg{width:13px;height:13px;stroke-width:2;color:var(--text-3);flex-shrink:0}
+  .cargo-line .pay{margin-left:auto;color:var(--text);font-weight:700}
+  .cargo-line .pay.vol{color:#B5750A}
+  .margin-line{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;margin-bottom:8px;padding:0 1px}
+  .margin-line .mt{flex:1;height:5px;border-radius:6px;background:var(--surface-3);overflow:hidden}
+  .margin-line .mf{height:100%;border-radius:6px}
+  .margin-line .mp{font-weight:700;white-space:nowrap}
+  .m-good{color:var(--ok)} .m-good .mf{background:var(--ok)}
+  .m-warn{color:var(--warn)} .m-warn .mf{background:var(--warn)}
+  .m-bad{color:var(--bad)} .m-bad .mf{background:var(--bad)}
+  .meta{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-2);margin-bottom:6px}
+  .meta svg{width:13px;height:13px;stroke-width:2;flex-shrink:0;color:var(--text-3)}
+  .meta .zone{color:var(--text-3);font-weight:600}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:3px 8px;border-radius:7px;background:var(--surface-3);color:var(--text-2)}
+  .chip svg{width:12px;height:12px;stroke-width:2}
+  .chip.carrier{background:#EEF2FF;color:#4456C7}
+  .chip.track{background:var(--surface-2);color:var(--text-2);border:1px solid var(--border-2)}
+  .chip.cod{background:#FFF4E5;color:#B5750A}
+  .chip.ins{background:#EAF1FE;color:#2563EB}
+  .chip.doc{background:var(--surface-2);color:var(--text-2);border:1px solid var(--border-2)}
+  .chip.pickup{background:#ECFDF3;color:#0E7C56}
+  .chip.ok{background:#EAF8F1;color:#0E7C56}
+  .chip-row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
+  .track-status{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#0E7C56;background:#EAF8F1;border-radius:8px;padding:6px 9px;margin-bottom:8px}
+  .track-status.late{color:var(--bad);background:var(--bad-bg)}
+  .track-status svg{width:13px;height:13px;stroke-width:2.2;flex-shrink:0}
+  .pod{display:flex;align-items:flex-start;gap:6px;font-size:11px;font-weight:500;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border-2);border-radius:8px;padding:6px 9px;margin-bottom:8px}
+  .pod svg{width:13px;height:13px;stroke-width:2;color:var(--ok);flex-shrink:0;margin-top:1px}
+  .pod b{color:var(--text);font-weight:700}
+  .card-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:9px;margin-top:2px;gap:8px}
+  .resp{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-2);font-weight:500;min-width:0}
+  .resp .ra{width:20px;height:20px;border-radius:6px;background:#E7ECF4;color:#41587C;display:grid;place-items:center;font-size:9.5px;font-weight:700;flex-shrink:0}
+  .resp .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .resp .date{color:var(--text-3);font-weight:600;white-space:nowrap}
+  .actions{display:flex;gap:6px;margin-top:10px}
+  .act{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 8px;border-radius:8px;font-size:11.5px;font-weight:600;border:1px solid var(--border-2);background:var(--surface);color:var(--text-2)}
+  .act svg{width:13px;height:13px;stroke-width:2}
+  .act:hover{background:var(--surface-2);border-color:var(--border-strong);color:var(--text)}
+  .act.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .act.primary:hover{background:var(--primary-d);color:#fff}
+  .act.danger{color:var(--bad);border-color:#F3B6B7;background:#fff}
+  .act.danger:hover{background:var(--bad-bg)}
+  .channels{display:flex;gap:6px;margin-top:9px}
+  .ch{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;background:var(--surface-2);border:1px solid var(--border-2)}
+  .ch svg{width:14px;height:14px;stroke-width:2}
+  .ch.phone{color:var(--ch-phone)} .ch.wa{color:var(--ch-wa)} .ch.viber{color:var(--ch-viber)} .ch.tg{color:var(--ch-tg)} .ch.mail{color:var(--ch-mail)}
+  .ch:hover{background:#fff;border-color:var(--border-strong)}
+  .add-card{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:10px;border-radius:var(--radius-sm);border:1px dashed var(--border-strong);color:var(--text-3);font-weight:600;font-size:12px;background:transparent}
+  .add-card svg{width:15px;height:15px;stroke-width:2}
+  .add-card:hover{background:var(--surface);color:var(--text-2)}
+
+  /* AI ghost */
+  .ai-ghost{border:1px dashed var(--violet-border);background:var(--violet-light);border-radius:var(--radius-sm);padding:11px 12px;opacity:.92}
+  .ai-ghost .ai-h{display:flex;align-items:center;gap:7px;margin-bottom:6px;flex-wrap:wrap}
+  .ai-spark{width:20px;height:20px;border-radius:6px;background:#EAE4FF;display:grid;place-items:center;color:var(--violet);flex-shrink:0}
+  .ai-spark svg{width:13px;height:13px;stroke-width:2}
+  .ai-ghost .ai-h b{font-size:12px;font-weight:700;color:#5B45C9}
+  .ai-badge{font-size:9px;font-weight:700;color:var(--violet);background:#EAE4FF;border:1px dashed var(--violet-border);border-radius:6px;padding:2px 6px;letter-spacing:.2px;white-space:nowrap}
+  .ai-ghost p{font-size:11.5px;color:#6E60A8;font-weight:500;line-height:1.4}
+
+  /* Footer stats */
+  .foot-stats{display:flex;align-items:center;gap:28px;padding:14px 22px;background:var(--surface);border-top:1px solid var(--border);margin-top:14px;flex-wrap:wrap}
+  .fs{display:flex;flex-direction:column;gap:2px}
+  .fs .lab{font-size:11px;color:var(--text-3);font-weight:600}
+  .fs .v{font-size:18px;font-weight:800;letter-spacing:-.3px}
+  .fs .v.bad{color:var(--bad)}
+  .fs .v .cur{font-size:11px;color:var(--text-3);font-weight:700}
+  .fs .d{font-size:11px;font-weight:600}
+  .foot-spacer{flex:1}
+  .period{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2);font-weight:600;white-space:nowrap}
+  .period svg{width:15px;height:15px;stroke-width:2;color:var(--text-3)}
+
+  /* Table */
+  .tbl-wrap{padding:18px 22px}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:14px;flex-wrap:wrap}
+  .panel-head h2{font-size:16px;font-weight:700}
+  .panel-head p{font-size:12.5px;color:var(--text-3);margin-top:2px}
+  .table{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);border-collapse:collapse}
+  .table th{text-align:left;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;padding:12px 16px;background:var(--surface-2);border-bottom:1px solid var(--border)}
+  .table td{padding:13px 16px;border-bottom:1px solid var(--border);font-size:12.5px;vertical-align:middle}
+  .table tr:last-child td{border-bottom:none}
+  .table tr:hover td{background:var(--surface-2)}
+  .carrier-cell{display:flex;align-items:center;gap:11px}
+  .carrier-logo{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-weight:800;font-size:12px;color:#fff;flex-shrink:0}
+  .carrier-name b{font-size:13px;font-weight:700;display:block}
+  .carrier-name span{font-size:11px;color:var(--text-3)}
+  .tag{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:7px}
+  .t-api{color:#0E7C56;background:#EAF8F1} .t-csv{color:#B5750A;background:#FEF6E9} .t-manual{color:#6B7280;background:#F1F2F4}
+  .t-on{color:#0E9F6E;background:#EAF8F1}
+  .bar-cell{display:flex;align-items:center;gap:10px;min-width:140px}
+  .bar-track{flex:1;height:7px;background:var(--surface-3);border-radius:6px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:6px}
+  .otd-num{font-size:12.5px;font-weight:700;width:38px;text-align:right}
+  .num-strong{font-weight:700}
+
+  /* Cost dashboard */
+  .cost-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+  .cost-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 17px;box-shadow:var(--shadow-sm)}
+  .cost-card .cl{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);font-weight:600;margin-bottom:11px}
+  .cost-card .cl .ci{width:26px;height:26px;border-radius:7px;display:grid;place-items:center}
+  .cost-card .cl .ci svg{width:14px;height:14px;stroke-width:2}
+  .cost-card .cv{font-size:25px;font-weight:800;letter-spacing:-.5px}
+  .cost-card .cv .cur{font-size:13px;color:var(--text-3);font-weight:700}
+  .cost-card .cs{font-size:11.5px;color:var(--text-3);margin-top:6px;font-weight:500}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+  .split{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm)}
+  .split h3{font-size:14px;font-weight:700;margin-bottom:3px}
+  .split .hint{font-size:12px;color:var(--text-3);margin-bottom:16px}
+  .cost-row{display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid var(--border)}
+  .cost-row:last-child{border-bottom:none}
+  .cost-row .cn{width:178px;display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:600}
+  .cost-row .ct{flex:1;height:9px;background:var(--surface-3);border-radius:6px;overflow:hidden}
+  .cost-row .cf{height:100%;border-radius:6px;background:linear-gradient(90deg,#3B82F6,#2563EB)}
+  .cost-row .cm{width:124px;text-align:right;font-size:12.5px;font-weight:700}
+  .cost-row .cm small{font-size:10.5px;color:var(--text-3);font-weight:600;display:block;margin-top:1px}
+  .gp-hero{display:flex;align-items:baseline;gap:10px;margin:4px 0 14px}
+  .gp-hero .big{font-size:34px;font-weight:800;letter-spacing:-1px;color:#0E9F6E}
+  .gp-hero .lbl{font-size:12px;color:var(--text-2);font-weight:600}
+  .gp-bar{height:12px;border-radius:8px;background:var(--surface-3);overflow:hidden;margin-bottom:8px}
+  .gp-bar .gf{height:100%;background:linear-gradient(90deg,#34D399,#0E9F6E);border-radius:8px}
+  .gp-foot{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-3);font-weight:600}
+  .mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+  .mini{background:var(--surface-2);border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:11px 13px}
+  .mini .ml{font-size:11px;color:var(--text-3);font-weight:600;margin-bottom:4px}
+  .mini .mv{font-size:17px;font-weight:800;letter-spacing:-.3px}
+  .mini .mv .cur{font-size:10.5px;color:var(--text-3);font-weight:700}
+
+  /* Right rail */
+  .rail{background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+  .rail-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 0}
+  .rail-head b{font-size:14px;font-weight:700}
+  .rail-head .ib{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--text-3);border:1px solid var(--border-2)}
+  .rail-head .ib svg{width:15px;height:15px;stroke-width:2}
+  .rail-tabs{display:flex;gap:4px;padding:12px 18px 0}
+  .rtab{flex:1;padding:8px;border-radius:9px;font-size:12px;font-weight:600;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border-2);display:flex;align-items:center;justify-content:center;gap:6px}
+  .rtab svg{width:14px;height:14px;stroke-width:2}
+  .rtab.active{background:var(--primary-light);border-color:var(--primary-ring);color:var(--primary)}
+  .rtab.ai.active{background:var(--violet-light);border-color:var(--violet-border);color:var(--violet)}
+  .rail-body{flex:1;overflow-y:auto;padding:12px 14px 16px}
+  .rpane{display:none} .rpane.show{display:block}
+  .chat{display:flex;gap:11px;padding:10px;border-radius:var(--radius-sm)}
+  .chat:hover{background:var(--surface-2)}
+  .chat .ca{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0}
+  .chat .cc{flex:1;min-width:0}
+  .chat .ctop{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .chat .cn{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat .cw{font-size:10.5px;color:var(--text-3);font-weight:600;flex-shrink:0}
+  .chat .cm{font-size:11.5px;color:var(--text-2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .chat .unread{min-width:18px;height:18px;border-radius:10px;background:var(--primary);color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;flex-shrink:0;margin-top:3px}
+  .rail-foot{border-top:1px solid var(--border);padding:13px 18px;text-align:center}
+  .rail-foot a{color:var(--primary);font-weight:700;font-size:12.5px}
+  .ai-note{display:flex;gap:9px;align-items:flex-start;background:var(--violet-light);border:1px dashed var(--violet-border);border-radius:var(--radius-sm);padding:11px 12px;margin-bottom:12px}
+  .ai-note svg{width:16px;height:16px;stroke-width:2;color:var(--violet);flex-shrink:0;margin-top:1px}
+  .ai-note p{font-size:11.5px;color:#6E60A8;font-weight:500;line-height:1.45}
+  .ai-inbox-card{border:1px dashed var(--violet-border);background:#fff;border-radius:var(--radius-sm);padding:12px;margin-bottom:11px;opacity:.95}
+  .ai-inbox-card .aih{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+  .ai-inbox-card .aih b{font-size:12px;font-weight:700;color:#5B45C9;flex:1}
+  .ai-inbox-card p{font-size:11.5px;color:#6E60A8;font-weight:500;line-height:1.42}
+  .ai-inbox-card .src{font-size:10.5px;color:var(--violet);font-weight:600;margin-top:6px;display:flex;align-items:center;gap:5px}
+  .ai-inbox-card .src svg{width:12px;height:12px;stroke-width:2}
+  .ai-actions{display:flex;gap:6px;margin-top:9px}
+  .ai-act{flex:1;padding:6px;border-radius:7px;font-size:11px;font-weight:600;background:#fff;border:1px solid var(--violet-border);color:#8478B5;opacity:.6;cursor:not-allowed}
+
+  .nowrap{white-space:nowrap}
+
+  /* Modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(17,24,39,.55);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:50;padding:24px}
+  .modal-overlay.show{display:flex}
+  .modal{background:var(--surface);border-radius:18px;box-shadow:var(--shadow-lg);width:760px;max-width:100%;max-height:92vh;overflow:hidden;display:flex;flex-direction:column}
+  .modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 22px 16px;border-bottom:1px solid var(--border)}
+  .modal-head h3{font-size:17px;font-weight:800;letter-spacing:-.2px}
+  .modal-head .msub{font-size:12.5px;color:var(--text-3);margin-top:3px;font-weight:500}
+  .modal-x{width:32px;height:32px;border-radius:9px;border:1px solid var(--border-2);display:grid;place-items:center;color:var(--text-2);flex-shrink:0}
+  .modal-x svg{width:16px;height:16px;stroke-width:2}
+  .modal-x:hover{background:var(--surface-2)}
+  .modal-body{padding:18px 22px;overflow-y:auto}
+  .mp-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+  .mp{background:var(--surface-2);border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:10px 12px}
+  .mp .l{font-size:10.5px;color:var(--text-3);font-weight:600;margin-bottom:3px}
+  .mp .v{font-size:14px;font-weight:700}
+  .mp .v.vol{color:#B5750A}
+  .sec-label{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;margin:4px 0 10px}
+  .rate{display:flex;align-items:center;gap:13px;padding:12px 14px;border:1.5px solid var(--border-2);border-radius:var(--radius-sm);margin-bottom:9px;cursor:pointer;transition:border-color .12s,background .12s}
+  .rate:hover{border-color:var(--primary-ring);background:var(--primary-light)}
+  .rate.sel{border-color:var(--primary);background:var(--primary-light);box-shadow:0 0 0 3px rgba(37,99,235,.08)}
+  .rate .rlogo{width:38px;height:38px;border-radius:9px;display:grid;place-items:center;font-weight:800;font-size:12px;color:#fff;flex-shrink:0}
+  .rate .rinfo{flex:1;min-width:0}
+  .rate .rinfo b{font-size:13.5px;font-weight:700;display:block}
+  .rate .rinfo span{font-size:11px;color:var(--text-3);font-weight:500}
+  .rate .rmeta{display:flex;gap:18px;text-align:right;flex-shrink:0}
+  .rate .rm{display:flex;flex-direction:column}
+  .rate .rm .rl{font-size:10px;color:var(--text-3);font-weight:600}
+  .rate .rm .rv{font-size:14px;font-weight:800;letter-spacing:-.3px}
+  .rate .rm .rv.price{color:var(--primary)}
+  .badge-best{font-size:9.5px;font-weight:700;color:#0E7C56;background:#EAF8F1;border-radius:6px;padding:2px 7px;margin-left:8px}
+  .badge-fast{font-size:9.5px;font-weight:700;color:#2563EB;background:#EAF1FE;border-radius:6px;padding:2px 7px;margin-left:8px}
+  .opt-row{display:flex;gap:12px;margin:16px 0 4px;flex-wrap:wrap}
+  .opt{flex:1;min-width:200px;display:flex;align-items:center;gap:10px;border:1px solid var(--border-2);border-radius:var(--radius-sm);padding:11px 13px}
+  .opt .oi{width:30px;height:30px;border-radius:8px;background:var(--surface-2);display:grid;place-items:center;color:var(--text-2);flex-shrink:0}
+  .opt .oi svg{width:15px;height:15px;stroke-width:2}
+  .opt .oc{flex:1}
+  .opt .oc b{font-size:12.5px;font-weight:700;display:block}
+  .opt .oc span{font-size:11px;color:var(--text-3)}
+  .mini-switch{width:34px;height:19px;border-radius:20px;background:#D5D9DF;position:relative;flex-shrink:0;transition:background .15s;cursor:pointer}
+  .mini-switch.on{background:var(--primary)}
+  .mini-switch::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .15s}
+  .mini-switch.on::after{left:17px}
+  .modal-ai{display:flex;gap:9px;align-items:flex-start;background:var(--violet-light);border:1px dashed var(--violet-border);border-radius:var(--radius-sm);padding:11px 12px;margin-top:16px}
+  .modal-ai svg{width:15px;height:15px;stroke-width:2;color:var(--violet);flex-shrink:0;margin-top:1px}
+  .modal-ai p{font-size:11.5px;color:#6E60A8;font-weight:500;line-height:1.45}
+  .modal-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 22px;border-top:1px solid var(--border);background:var(--surface-2)}
+  .foot-total{font-size:12.5px;color:var(--text-2);font-weight:600}
+  .foot-total b{font-size:18px;font-weight:800;color:var(--text);margin-left:6px}
+  .foot-btns{display:flex;gap:10px}
+
+  @media (max-width:1280px){.app{grid-template-columns:236px minmax(0,1fr)} .rail{display:none}}
+  @media (max-width:1100px){.two-col{grid-template-columns:1fr}}
+  @media (max-width:920px){.app{grid-template-columns:1fr} .sidebar{display:none} .kpi-row{grid-template-columns:repeat(2,1fr)} .cost-grid{grid-template-columns:repeat(2,1fr)} .mp-grid{grid-template-columns:repeat(2,1fr)}}
+  /* Tariffs & zones reference */
+  .ref-section{margin-bottom:22px}
+  .ref-h{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .ref-h .rn{width:26px;height:26px;border-radius:8px;background:var(--primary-light);color:var(--primary);display:grid;place-items:center;font-weight:800;font-size:12px;flex-shrink:0}
+  .ref-h h3{font-size:15px;font-weight:700}
+  .ref-h .rc{font-size:11.5px;color:var(--text-3);font-weight:600;margin-left:auto}
+  .zp{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:6px;font-size:11px;font-weight:800;color:#fff}
+  .z1{background:var(--stage-blue)} .z2{background:var(--stage-violet)} .z3{background:var(--stage-amber)} .z4{background:var(--stage-pink)}
+  .zone-name{font-weight:700;font-size:12.5px}
+  .table td.n,.table th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .table td.n{font-weight:600}
+  .table td.base{color:var(--text);font-weight:700}
+  .table .muted-cell{color:var(--text-3)}
+  .table tr.grp td{background:var(--surface-2);border-bottom:1px solid var(--border)}
+  .grp-cell{display:flex;align-items:center;gap:10px;padding:2px 0}
+  .grp-cell .gl{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;font-weight:800;font-size:11px;color:#fff;flex-shrink:0}
+  .grp-cell b{font-size:13px;font-weight:700}
+  .grp-cell .gmin{font-size:11px;color:var(--text-3);font-weight:600;margin-left:6px}
+  .legend{display:flex;gap:22px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;box-shadow:var(--shadow-sm);margin-top:2px}
+  .legend .li{display:flex;gap:9px;align-items:flex-start;max-width:320px}
+  .legend .li svg{width:15px;height:15px;stroke-width:2;color:var(--primary);flex-shrink:0;margin-top:1px}
+  .legend .li b{font-size:12px;font-weight:700;display:block;margin-bottom:2px}
+  .legend .li span{font-size:11.5px;color:var(--text-2);line-height:1.4}
+  .tbl-note{font-size:11.5px;color:var(--text-3);font-weight:500;margin:9px 2px 0}
+  .grade{display:inline-flex;align-items:center;gap:7px;font-weight:800}
+  .gr-badge{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800}
+  .gr-a .gr-badge{background:#0E9F6E} .gr-b .gr-badge{background:#D9820B} .gr-c .gr-badge{background:#8A94A6}
+  .gr-a{color:#0E7C56} .gr-b{color:#B5750A} .gr-c{color:#6B7280}
+  .gr-score{font-variant-numeric:tabular-nums;color:var(--text-3);font-weight:700;font-size:11.5px}
+  .claims-bad{color:var(--bad);font-weight:700} .claims-ok{color:var(--text);font-weight:600}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">CR</div><div class="brand-name">CMR-ERP</div></div>
+    <nav class="nav">
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>Главная</a>
+      <div class="nav-label">Модули</div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>CRM</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>Закупки</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 20h20"/><path d="M4 20V8l5-4v16"/><path d="M9 20V8l11 4v8"/></svg>Производство</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/></svg>Склад</a>
+      <a class="nav-item active" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Логистика</a>
+      <div class="nav-sub">
+        <a class="on" href="#">Доставка РБ/РФ</a>
+        <a href="#">Импорт из Китая</a>
+        <a href="#">Перевозчики</a>
+        <a href="#">Тарифы и зоны</a>
+        <a href="#">Проблемы и возвраты</a>
+        <a href="#">Расходы</a>
+      </div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Финансы</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M18 9l-5 5-3-3-4 4"/></svg>Маркетинг</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Сервис и поддержка</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>HR</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Аналитика</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>IT и настройки</a>
+    </nav>
+    <div class="sidebar-foot"><div class="avatar">ДК</div><div class="who"><b>Дмитрий К.</b><span>Владелец · AI Control Tower</span></div></div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb"><span class="dim">Логистика</span> <span class="dim">/</span> <span class="cur" id="crumbTab">Доставка РБ/РФ</span></div>
+      <div style="flex:1"></div>
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input placeholder="Поиск отгрузок, перевозчиков, трек-номеров…"></div>
+      <button class="ai-toggle" id="aiToggle" title="Режим ИИ — Итерация 1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg><b>Режим ИИ</b><span class="switch"></span></button>
+      <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Создать доставку</button>
+      <button class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="dot-badge">4</span></button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="delivery" data-name="Доставка РБ/РФ"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Доставка РБ/РФ <span class="cnt">12</span></button>
+      <button class="tab" data-tab="import" data-name="Импорт из Китая"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 21h20"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>Импорт из Китая <span class="cnt">6</span></button>
+      <button class="tab" data-tab="carriers" data-name="Перевозчики"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>Перевозчики <span class="cnt">5</span></button>
+      <button class="tab" data-tab="tariffs" data-name="Тарифы и зоны"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 4-5"/></svg>Тарифы и зоны</button>
+      <button class="tab" data-tab="problems" data-name="Проблемы и возвраты"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Проблемы и возвраты <span class="cnt alert">4</span></button>
+      <button class="tab" data-tab="costs" data-name="Расходы"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Расходы</button>
+    </div>
+
+    <div class="scroll">
+
+      <!-- ===== DELIVERY ===== -->
+      <section class="panel show" id="panel-delivery">
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="kpi-top"><span class="kpi-ic" style="background:#EAF1FE;color:#2563EB"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>Грузы в пути</div>
+            <div class="kpi-val">9</div><div class="kpi-sub">по РБ/РФ, клиентам</div>
+          </div>
+          <div class="kpi alert">
+            <div class="kpi-top"><span class="kpi-ic" style="background:#FEECEC;color:#E5484D"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>Просрочки SLA</div>
+            <div class="kpi-val bad">1</div><div class="kpi-sub">ETA прошёл, не доставлено</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-top"><span class="kpi-ic" style="background:#EAF8F1;color:#0E9F6E"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></span>OTIF · в срок и в полном</div>
+            <div class="kpi-val">89<small>%</small></div><div class="kpi-sub">в срок + полный состав · цель ≥95%</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-top"><span class="kpi-ic" style="background:#EAF8F1;color:#0E9F6E"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span>С 1-й попытки (FADR)</div>
+            <div class="kpi-val">94<small>%</small></div><div class="kpi-sub">недозвон/отказ 6% · лидеры &gt;93%</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-top"><span class="kpi-ic" style="background:#FEF6E9;color:#D9820B"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Расход компании</div>
+            <div class="kpi-val">3 940<small> BYN</small></div><div class="kpi-sub">= 4.2% валовой прибыли</div>
+          </div>
+        </div>
+
+        <div class="board-wrap">
+          <div class="board">
+
+            <!-- Заявка -->
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-blue)">
+                <div class="col-title"><b>Заявка</b><span class="pill">3</span></div>
+                <div class="col-sum">Ожидают выбора перевозчика и расчёта тарифа</div>
+              </div>
+              <div class="col-body">
+                <div class="card focus">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0042</span><div class="card-top-r"><span class="badge b-high">Высокий</span><span class="star on"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.9 21l1.2-6.8-5-4.9 6.9-1z"/></svg></span></div></div>
+                  <div class="card-title">ООО ЭнергоСистемы</div>
+                  <div class="card-sub">Инверторы гибридные 5 кВт · 8 шт</div>
+                  <div class="cargo-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>3 места · 64 кг · об. 52 кг<span class="pay">оплат. 64 кг</span></div>
+                  <div class="card-amount muted">Тариф не рассчитан · заказ 12 800 BYN</div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Минск → Гомель <span class="zone">· зона 2</span></div>
+                  <div class="card-foot"><span class="resp"><span class="ra">КА</span><span class="nm">Диспетчер Карпович А.</span></span><span class="resp"><span class="date">10.06</span></span></div>
+                  <div class="actions"><button class="act primary js-open-modal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Рассчитать и оформить</button></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0043</span><div class="card-top-r"><span class="badge b-mid">Средний</span><span class="star"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2l3 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.9 21l1.2-6.8-5-4.9 6.9-1z"/></svg></span></div></div>
+                  <div class="card-title">ЧТУП СолярПлюс</div>
+                  <div class="card-sub">АКБ LiFePO4 12В 100Ah · 20 шт</div>
+                  <div class="cargo-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>4 места · 260 кг · об. 96 кг<span class="pay">оплат. 260 кг</span></div>
+                  <div class="card-amount muted">Тариф не рассчитан · заказ 9 400 BYN</div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Минск → Брест <span class="zone">· зона 3</span></div>
+                  <div class="chip-row"><span class="chip cod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Наложка 9 400 BYN</span></div>
+                  <div class="card-foot"><span class="resp"><span class="ra">КА</span><span class="nm">Диспетчер Карпович А.</span></span><span class="resp"><span class="date">10.06</span></span></div>
+                  <div class="actions"><button class="act primary js-open-modal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>Рассчитать и оформить</button></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0044</span><div class="card-top-r"><span class="badge b-low">Низкий</span></div></div>
+                  <div class="card-title">ООО Прогресс-Энерго</div>
+                  <div class="card-sub">АКБ 12В 60Ah · 12 шт</div>
+                  <div class="chip-row"><span class="chip pickup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8"/><path d="M3.3 7L12 12l8.7-5"/></svg>Самовывоз со склада</span><span class="chip">Талон №0612</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Приезд клиента: 11.06, 15:00</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">КА</span><span class="nm">Диспетчер Карпович А.</span></span><span class="resp"><span class="date">10.06</span></span></div>
+                  <div class="actions"><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Подготовить талон</button></div>
+                </div>
+
+                <div class="ai-ghost">
+                  <div class="ai-h"><span class="ai-spark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg></span><b>Автоподбор перевозчика</b><span class="ai-badge">Итерация 1 · ИИ</span></div>
+                  <p>ИИ выберет перевозчика по тарифу, плечу и OTD, учтёт объёмный вес и долю в марже заказа. Сейчас расчёт — вручную в окне оформления.</p>
+                </div>
+                <button class="add-card"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Добавить доставку</button>
+              </div>
+            </div>
+
+            <!-- Перевозчик назначен -->
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-violet)">
+                <div class="col-title"><b>Перевозчик назначен</b><span class="pill">2</span></div>
+                <div class="col-sum">Заказ оформлен · 281,50 BYN</div>
+              </div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0039</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">ООО ТехноВатт</div>
+                  <div class="card-sub">Солнечные панели 450 Вт · 16 шт</div>
+                  <div class="cargo-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>4 места · 96 кг · об. 140 кг<span class="pay vol">оплат. 140 кг</span></div>
+                  <div class="card-amount">185,00 <span class="cur">BYN</span></div>
+                  <div class="margin-line m-warn"><span>Доставка / маржа</span><span class="mt"><span class="mf" style="width:11%"></span></span><span class="mp">11%</span></div>
+                  <div class="chip-row"><span class="chip carrier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7"/></svg>DPD</span><span class="chip">№ DPD-2026-0039</span><span class="chip doc">ТТН-1 №0641290</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Минск → Витебск <span class="zone">· зона 2</span></div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 12.06</span></span></div>
+                  <div class="actions"><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Трек</button><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg>В путь</button></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0040</span><div class="card-top-r"><span class="badge b-mid">Средний</span></div></div>
+                  <div class="card-title">ИП Сидорчук</div>
+                  <div class="card-sub">Battery cells 280Ah · 32 шт</div>
+                  <div class="cargo-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>2 места · 64 кг · об. 28 кг<span class="pay">оплат. 64 кг</span></div>
+                  <div class="card-amount">96,50 <span class="cur">BYN</span></div>
+                  <div class="margin-line m-good"><span>Доставка / маржа</span><span class="mt"><span class="mf" style="width:6%"></span></span><span class="mp">6%</span></div>
+                  <div class="chip-row"><span class="chip carrier">Автолайт Экспресс</span><span class="chip cod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Наложка 3 280 BYN</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Минск → Гродно <span class="zone">· зона 3</span></div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 12.06</span></span></div>
+                  <div class="actions"><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Трек</button><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg>В путь</button></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- В пути -->
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-amber)">
+                <div class="col-title"><b>В пути</b><span class="pill">4</span></div>
+                <div class="col-sum">Отслеживаются · <span class="sla-warn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>1 просрочка</span></div>
+              </div>
+              <div class="col-body">
+                <div class="card overdue">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0033</span><div class="card-top-r"><span class="badge b-overdue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Просрочено 2 дн</span></div></div>
+                  <div class="card-title">ООО АкваСервис</div>
+                  <div class="card-sub">ИБП + АКБ, комплект · 1 шт</div>
+                  <div class="card-amount">88,00 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier">СДЭК</span><span class="chip track">📍 1099870042</span></div>
+                  <div class="track-status late"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Задержка перевозчика · ETA был 09.06</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">Брест, зона 3</span></span></div>
+                  <div class="actions"><button class="act danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Эскалация</button><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>Перевозчик</button></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0035</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">ООО ГринПауэр</div>
+                  <div class="card-sub">АКБ-сборка 48В 100Ah · 1 шт</div>
+                  <div class="cargo-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>1 место · 38 кг · об. 12 кг<span class="pay">оплат. 38 кг</span></div>
+                  <div class="card-amount">142,00 <span class="cur">BYN</span></div>
+                  <div class="margin-line m-warn"><span>Доставка / маржа</span><span class="mt"><span class="mf" style="width:13%"></span></span><span class="mp">13%</span></div>
+                  <div class="chip-row"><span class="chip carrier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7"/></svg>DPD</span><span class="chip track">📍 BY284619</span><span class="chip ins"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Клиент уведомлён</span></div>
+                  <div class="track-status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Прибыло в сортцентр Гомель</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 11.06</span></span></div>
+                  <div class="channels"><a class="ch phone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg></a><a class="ch tg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg></a><a class="ch mail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg></a></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0036</span><div class="card-top-r"><span class="badge b-mid">Средний</span></div></div>
+                  <div class="card-title">ООО СтройЭнерго</div>
+                  <div class="card-sub">Инверторы гибридные · 4 шт</div>
+                  <div class="cargo-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>2 места · 22 кг · об. 30 кг<span class="pay vol">оплат. 30 кг</span></div>
+                  <div class="card-amount">78,00 <span class="cur">BYN</span> <span class="by-client">· оплачивает клиент</span></div>
+                  <div class="chip-row"><span class="chip carrier">СДЭК</span><span class="chip track">📍 1099887766</span></div>
+                  <div class="track-status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Передано курьеру на доставку</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 11.06</span></span></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0037</span><div class="card-top-r"><span class="badge b-low">Низкий</span></div></div>
+                  <div class="card-title">ОДО Электросити</div>
+                  <div class="card-sub">ЗУ + АКБ, комплект · 1 шт</div>
+                  <div class="card-amount">54,00 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier">Европочта</span><span class="chip track">📍 EP556677</span><span class="chip ins"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Клиент уведомлён</span><span class="chip cod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Наложка 1 540 BYN</span></div>
+                  <div class="track-status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>В пути на ПВЗ Минск, ул. Сурганова</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 11.06</span></span></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Доставлено -->
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-green)">
+                <div class="col-title"><b>Доставлено</b><span class="pill">3</span></div>
+                <div class="col-sum">За период · 395,00 BYN · с подтверждением (POD)</div>
+              </div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0031</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">ООО ЭнергоДом</div>
+                  <div class="card-sub">Солнечные панели 450 Вт · 24 шт</div>
+                  <div class="card-amount">210,00 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7"/></svg>DPD</span><span class="chip doc">ТТН-1 №0641203</span></div>
+                  <div class="pod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg><span>Получил: <b>Ковалёв С.П.</b> · 09.06, 14:20 · подпись в ТТН</span></div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">09.06</span></span></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0030</span><div class="card-top-r"><span class="badge b-mid">Средний</span></div></div>
+                  <div class="card-title">ЧУП ВольтМастер</div>
+                  <div class="card-sub">АКБ 12В 60Ah · 40 шт</div>
+                  <div class="card-amount">124,00 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier">Автолайт Экспресс</span><span class="chip doc">ТТН-1 №0641188</span><span class="chip ok">Наложка возвращена</span></div>
+                  <div class="pod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg><span>Получил: <b>склад, Лида</b> · 08.06, 11:05 · наложка 6 200 BYN зачислена</span></div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">08.06</span></span></div>
+                </div>
+
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0028</span><div class="card-top-r"><span class="badge b-low">Низкий</span></div></div>
+                  <div class="card-title">ИП Левчук</div>
+                  <div class="card-sub">Контроллеры MPPT · 6 шт</div>
+                  <div class="card-amount">61,00 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier">Европочта</span><span class="chip doc">ТТН-1 №0641150</span></div>
+                  <div class="pod"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg><span>Получил: <b>Левчук А.И.</b> · 07.06, 16:40 · ПВЗ Барановичи</span></div>
+                  <div class="card-foot"><span class="resp"><span class="ra">КА</span><span class="nm">Диспетчер Карпович А.</span></span><span class="resp"><span class="date">07.06</span></span></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="foot-stats">
+          <div class="fs"><span class="lab">Отгрузок в работе</span><span class="v">9</span><span class="d delta up">+2 за неделю</span></div>
+          <div class="fs"><span class="lab">Просрочки SLA</span><span class="v bad">1</span><span class="d delta down">11% от в пути</span></div>
+          <div class="fs"><span class="lab">Расход в работе</span><span class="v">555 <span class="cur">BYN</span></span><span class="d delta up">5 перевозчиков</span></div>
+          <div class="fs"><span class="lab">Наложка к возврату</span><span class="v">12 400 <span class="cur">BYN</span></span><span class="d delta up">3 отгрузки</span></div>
+          <div class="fs"><span class="lab">Доставлено за период</span><span class="v">38</span><span class="d delta up">+9%</span></div>
+          <div class="fs"><span class="lab">Среднее время</span><span class="v">2.4 <span class="cur">дн</span></span><span class="d delta up">−0.3 дн</span></div>
+          <div class="fs"><span class="lab">Доставка в срок (OTD)</span><span class="v">92%</span><span class="d delta up">+2%</span></div>
+          <div class="fs"><span class="lab">Идеальный заказ</span><span class="v">86%</span><span class="d delta up">норма ~84%</span></div>
+          <div class="foot-spacer"></div>
+          <div class="period"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>01.06.2026 – 11.06.2026</div>
+        </div>
+      </section>
+
+      <!-- ===== IMPORT ===== -->
+      <section class="panel" id="panel-import">
+        <div class="board-wrap" style="padding-top:18px">
+          <div class="board">
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-blue)"><div class="col-title"><b>Фабрика</b><span class="pill">1</span></div><div class="col-sum">Производство / отгрузка с завода</div></div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ИМП-2026-0018</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">🇨🇳 Battery cells 280Ah</div>
+                  <div class="card-sub">Shenzhen Topband · 600 шт</div>
+                  <div class="card-amount">4 200 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip">FOB Shenzhen</span><span class="chip">PO ЗАК-2026-0091</span><span class="chip">600 шт</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Шэньчжэнь → Минск</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 28.06</span></span></div>
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-violet)"><div class="col-title"><b>Консолидация</b><span class="pill">1</span></div><div class="col-sum">Сборка груза на хабе</div></div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ИМП-2026-0016</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">🇨🇳 Солнечные панели 450 Вт</div>
+                  <div class="card-sub">Guangzhou Sunpal · 220 шт</div>
+                  <div class="card-amount">6 800 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip">CIF</span><span class="chip track">TCLU7782341</span><span class="chip">PO ЗАК-2026-0088</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Гуанчжоу → консолид. Урумчи</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 24.06</span></span></div>
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-amber)"><div class="col-title"><b>В пути</b><span class="pill">2</span></div><div class="col-sum">Международное плечо</div></div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ИМП-2026-0014</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">🇨🇳 Инверторы гибридные 8 кВт</div>
+                  <div class="card-sub">Ningbo Deye · 80 шт</div>
+                  <div class="card-amount">9 400 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip">FOB · море</span><span class="chip track">MSKU9921007</span><span class="chip">PO ЗАК-2026-0085</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Нинбо → Клайпеда → Минск</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 03.07</span></span></div>
+                </div>
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ИМП-2026-0015</span><div class="card-top-r"><span class="badge b-mid">Средний</span></div></div>
+                  <div class="card-title">🇨🇳 АКБ LiFePO4 модули</div>
+                  <div class="card-sub">Shenzhen Topband · 150 шт</div>
+                  <div class="card-amount">5 600 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip">FOB · море</span><span class="chip track">TEMU4456120</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Нинбо → Минск</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 05.07</span></span></div>
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-pink)"><div class="col-title"><b>Таможня</b><span class="pill">1</span></div><div class="col-sum">Оформление ДТ · СВХ Минск</div></div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ИМП-2026-0011</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">🇨🇳 Контроллеры MPPT</div>
+                  <div class="card-sub">Guangzhou Sunpal · 300 шт</div>
+                  <div class="card-amount">3 100 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier" style="background:#FDEEF5;color:#B83280">Досмотр · ДТ подана</span><span class="chip track">OOLU1234567</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>СВХ Минск · PO ЗАК-2026-0080</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">ETA 11.06</span></span></div>
+                </div>
+                <div class="ai-ghost">
+                  <div class="ai-h"><span class="ai-spark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg></span><b>Таможенный движок</b><span class="ai-badge">Итерация 1 · ИИ</span></div>
+                  <p>ИИ извлечёт коды ТН ВЭД из инвойса, соберёт пакет ДТ и проверит расхождения. Недоступно в прототипе.</p>
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <div class="col-head" style="border-top-color:var(--stage-green)"><div class="col-title"><b>Приёмка на склад</b><span class="pill">1</span></div><div class="col-sum">Передано в Склад (QC)</div></div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ИМП-2026-0008</span><div class="card-top-r"><span class="badge b-mid">Средний</span></div></div>
+                  <div class="card-title">🇨🇳 Инверторы 5 кВт</div>
+                  <div class="card-sub">Ningbo Deye · 60 шт</div>
+                  <div class="card-amount">7 200 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip track">CSNU7788990</span><span class="chip ok">✓ На складе</span><span class="chip">PO ЗАК-2026-0076</span></div>
+                  <div class="meta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/></svg>Склад Минск · приёмка завершена</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">КА</span><span class="nm">Диспетчер Карпович А.</span></span><span class="resp"><span class="date">06.06</span></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="foot-stats">
+          <div class="fs"><span class="lab">Поставок в пути</span><span class="v">6</span><span class="d delta up">5 контейнеров</span></div>
+          <div class="fs"><span class="lab">Себестоимость доставки</span><span class="v">31 700 <span class="cur">BYN</span></span><span class="d delta up">в работе</span></div>
+          <div class="fs"><span class="lab">На таможне</span><span class="v">1</span><span class="d delta down">досмотр</span></div>
+          <div class="fs"><span class="lab">Среднее плечо</span><span class="v">21 <span class="cur">дн</span></span><span class="d delta up">фабрика → склад</span></div>
+          <div class="foot-spacer"></div>
+          <div class="period"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Активные поставки</div>
+        </div>
+      </section>
+
+      <!-- ===== CARRIERS ===== -->
+      <section class="panel" id="panel-carriers">
+        <div class="tbl-wrap">
+          <div class="panel-head">
+            <div><h2>Scorecard перевозчиков</h2><p>Взвешенная оценка надёжности — основа для распределения объёмов (log-5). Пересмотр ежемесячно с перевозчиками.</p></div>
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-6.2-8.5"/><path d="M21 3v6h-6"/></svg>Заполнить из каталога</button>
+          </div>
+          <table class="table">
+            <thead><tr><th>Перевозчик</th><th>Покрытие</th><th>В срок</th><th class="n">Брак-free</th><th class="n">Точн. счетов</th><th class="n">Претензии</th><th class="n">Ставка/дост.</th><th>Оценка</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="carrier-cell"><div class="carrier-logo" style="background:#D6263A">DPD</div><div class="carrier-name"><b>DPD</b><span>dpd.by · 148 отгр.</span></div></div></td>
+                <td>РБ · ЕАЭС</td>
+                <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:96%;background:#0E9F6E"></div></div><span class="otd-num">96%</span></div></td>
+                <td class="n claims-ok">99,1%</td><td class="n claims-ok">97%</td><td class="n claims-ok">0,9%</td><td class="n">90,8</td>
+                <td><span class="grade gr-a"><span class="gr-badge">A</span><span class="gr-score">92</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="carrier-cell"><div class="carrier-logo" style="background:#1E73BE">АЛ</div><div class="carrier-name"><b>Автолайт Экспресс</b><span>autolight.by · 86 отгр.</span></div></div></td>
+                <td>РБ</td>
+                <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:93%;background:#0E9F6E"></div></div><span class="otd-num">93%</span></div></td>
+                <td class="n claims-ok">98,4%</td><td class="n claims-ok">95%</td><td class="n claims-ok">1,6%</td><td class="n">53,3</td>
+                <td><span class="grade gr-b"><span class="gr-badge">B</span><span class="gr-score">87</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="carrier-cell"><div class="carrier-logo" style="background:#0A8344">СД</div><div class="carrier-name"><b>СДЭК</b><span>cdek.by · 64 отгр.</span></div></div></td>
+                <td>РБ · СНГ · мир</td>
+                <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:91%;background:#0E9F6E"></div></div><span class="otd-num">91%</span></div></td>
+                <td class="n claims-ok">98,8%</td><td class="n claims-ok">96%</td><td class="n claims-ok">1,2%</td><td class="n">60,0</td>
+                <td><span class="grade gr-b"><span class="gr-badge">B</span><span class="gr-score">85</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="carrier-cell"><div class="carrier-logo" style="background:#E11A2C">ЕП</div><div class="carrier-name"><b>Европочта</b><span>evropochta.by · 52 отгр.</span></div></div></td>
+                <td>РБ · ПВЗ</td>
+                <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:89%;background:#D9820B"></div></div><span class="otd-num">89%</span></div></td>
+                <td class="n claims-ok">97,5%</td><td class="n claims-bad">92%</td><td class="n claims-bad">2,5%</td><td class="n">21,7</td>
+                <td><span class="grade gr-c"><span class="gr-badge">C</span><span class="gr-score">79</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="carrier-cell"><div class="carrier-logo" style="background:#1A5DAA">БП</div><div class="carrier-name"><b>Белпочта</b><span>belpost.by · 23 отгр.</span></div></div></td>
+                <td>РБ · отдалённые</td>
+                <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:84%;background:#D9820B"></div></div><span class="otd-num">84%</span></div></td>
+                <td class="n claims-ok">96,9%</td><td class="n claims-bad">90%</td><td class="n claims-bad">3,1%</td><td class="n">14,0</td>
+                <td><span class="grade gr-c"><span class="gr-badge">C</span><span class="gr-score">74</span></span></td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="tbl-note">Оценка = в срок 40% · брак-free 25% · точность счетов 20% · претензии 15%. Балл управляет распределением объёмов: <b style="color:#0E7C56">A</b> — приоритет загрузки, <b style="color:#6B7280">C</b> — на доработке, доля снижается. Брак-free учитывает все повреждения, а не только оформленные претензии; ставка/дост. — средняя стоимость одной доставки за счёт компании.</p>
+          <div class="ai-note" style="margin-top:16px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg><p><b style="color:#5B45C9">Живые API перевозчиков — Итерация 1.</b> В прототипе тарифы и способ интеграции хранятся как атрибуты (заполняются из прайсов вручную). Автосоздание накладной и трекинг через коннекторы DPD/СДЭК подключаются на Итерации 1.</p></div>
+        </div>
+      </section>
+
+      <!-- ===== PROBLEMS & RETURNS ===== -->
+      <section class="panel" id="panel-problems">
+        <div class="board-wrap" style="padding-top:18px">
+          <div class="board">
+            <div class="column">
+              <div class="col-head" style="border-top-color:#F59E0B"><div class="col-title"><b>Недозвон / нет получателя</b><span class="pill">1</span></div><div class="col-sum">Перевозчик не смог вручить</div></div>
+              <div class="col-body">
+                <div class="card overdue">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0029</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">ООО ТехСнаб</div>
+                  <div class="card-sub">Инверторы 3 кВт · 2 шт</div>
+                  <div class="chip-row"><span class="chip carrier">СДЭК</span><span class="chip track">📍 1099860029</span></div>
+                  <div class="track-status late"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>2 попытки вручения · получатель недоступен</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">КА</span><span class="nm">Диспетчер Карпович А.</span></span><span class="resp"><span class="date">Гомель</span></span></div>
+                  <div class="actions"><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>Связаться</button><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></svg>Перенести</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <div class="col-head" style="border-top-color:#E5484D"><div class="col-title"><b>Отказ / повреждение</b><span class="pill">1</span></div><div class="col-sum">Претензия к перевозчику</div></div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0026</span><div class="card-top-r"><span class="badge b-high">Высокий</span></div></div>
+                  <div class="card-title">ООО СтройМонтаж</div>
+                  <div class="card-sub">Солнечные панели 450 Вт · 8 шт</div>
+                  <div class="card-amount">96,00 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7"/></svg>DPD</span><span class="chip ins"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Застраховано 3 600 BYN</span></div>
+                  <div class="track-status late"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Повреждена упаковка · клиент отказался (2 шт)</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">ДЕ</span><span class="nm">Логист Дроздова Е.</span></span><span class="resp"><span class="date">Минск</span></span></div>
+                  <div class="actions"><button class="act danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Претензия → Юрист</button><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></svg>Возврат</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <div class="col-head" style="border-top-color:#8B5CF6"><div class="col-title"><b>Переадресация</b><span class="pill">1</span></div><div class="col-sum">Изменение адреса / даты</div></div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0024</span><div class="card-top-r"><span class="badge b-mid">Средний</span></div></div>
+                  <div class="card-title">ОДО ЭлектроМир</div>
+                  <div class="card-sub">ЗУ промышленные · 3 шт</div>
+                  <div class="card-amount">72,00 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier">Автолайт Экспресс</span><span class="chip track">📍 AL884024</span></div>
+                  <div class="track-status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 21s-8-4.5-8-11a8 8 0 0 1 16 0c0 6.5-8 11-8 11z"/><circle cx="12" cy="10" r="3"/></svg>Клиент просит другой адрес: Минск → Молодечно</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">КА</span><span class="nm">Диспетчер Карпович А.</span></span><span class="resp"><span class="date">в пути</span></span></div>
+                  <div class="actions"><button class="act primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Обновить адрес</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="column">
+              <div class="col-head" style="border-top-color:#22C55E"><div class="col-title"><b>Возврат на склад</b><span class="pill">1</span></div><div class="col-sum">Обратная логистика · приёмка в Складе</div></div>
+              <div class="col-body">
+                <div class="card">
+                  <div class="card-top"><span class="card-id">ЛОГ-2026-0021</span><div class="card-top-r"><span class="badge b-mid">Средний</span></div></div>
+                  <div class="card-title">ЧУП ВатсАп-Энерго</div>
+                  <div class="card-sub">АКБ LiFePO4 12В · 4 шт · брак</div>
+                  <div class="card-amount">64,00 <span class="cur">BYN</span></div>
+                  <div class="chip-row"><span class="chip carrier"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="1" y="3" width="15" height="13"/><path d="M16 8h4l3 3v5h-7"/></svg>DPD</span><span class="chip">возврат отправителю</span></div>
+                  <div class="track-status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.7L3 8"/><path d="M3 3v5h5"/></svg>Едет на склад · ожидается приёмка возврата</div>
+                  <div class="card-foot"><span class="resp"><span class="ra">КА</span><span class="nm">Диспетчер Карпович А.</span></span><span class="resp"><span class="date">ETA 12.06</span></span></div>
+                  <div class="actions"><button class="act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Передать в Склад</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="foot-stats">
+          <div class="fs"><span class="lab">Проблемных отгрузок</span><span class="v bad">4</span><span class="d delta down">1.2% от объёма</span></div>
+          <div class="fs"><span class="lab">Открытых претензий</span><span class="v">1</span><span class="d delta up">застраховано</span></div>
+          <div class="fs"><span class="lab">Возвратов в работе</span><span class="v">1</span><span class="d delta up">брак</span></div>
+          <div class="fs"><span class="lab">Сумма под риском</span><span class="v">232 <span class="cur">BYN</span></span><span class="d delta down">доставка + товар</span></div>
+          <div class="foot-spacer"></div>
+          <div class="period"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Требуют действия диспетчера</div>
+        </div>
+      </section>
+
+      <!-- ===== COSTS ===== -->
+      <section class="panel" id="panel-costs">
+        <div class="tbl-wrap">
+          <div class="panel-head">
+            <div><h2>Расходы и финпоток доставки</h2><p>01.06 – 11.06.2026 · доставка клиентам по РБ/РФ (log-8)</p></div>
+            <div class="period"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Июнь 2026</div>
+          </div>
+
+          <div class="cost-grid">
+            <div class="cost-card"><div class="cl"><span class="ci" style="background:#EAF1FE;color:#2563EB"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Всего расходов</div><div class="cv">4 820 <span class="cur">BYN</span></div><div class="cs">по 51 отгрузке РБ/РФ</div></div>
+            <div class="cost-card"><div class="cl"><span class="ci" style="background:#FEF6E9;color:#D9820B"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>За счёт компании</div><div class="cv">3 940 <span class="cur">BYN</span></div><div class="cs">82% расходов на доставку</div></div>
+            <div class="cost-card"><div class="cl"><span class="ci" style="background:#EAF8F1;color:#0E9F6E"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></span>За счёт клиента</div><div class="cv">880 <span class="cur">BYN</span></div><div class="cs">не входит в расход компании</div></div>
+            <div class="cost-card"><div class="cl"><span class="ci" style="background:#FDEEF5;color:#EC4899"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2 21h20"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg></span>Себестоимость импорта</div><div class="cv">31 700 <span class="cur">BYN</span></div><div class="cs">доставка из Китая, в работе</div></div>
+          </div>
+
+          <div class="two-col">
+            <div class="split">
+              <h3>Доставка к валовой прибыли</h3>
+              <p class="hint">Главный ориентир: сколько маржи съедает логистика по доставленным заказам</p>
+              <div class="gp-hero"><span class="big">4.2%</span><span class="lbl">расход на доставку от валовой прибыли<br>доставленных заказов (93 800 BYN)</span></div>
+              <div class="gp-bar"><div class="gf" style="width:4.2%"></div></div>
+              <div class="gp-foot"><span>цель ≤ 5%</span><span>норма по отрасли 4–7%</span></div>
+              <div class="mini-grid">
+                <div class="mini"><div class="ml">Средний чек доставки</div><div class="mv">94 <span class="cur">BYN</span></div></div>
+                <div class="mini"><div class="ml">Средний оплач. вес</div><div class="mv">61 <span class="cur">кг</span></div></div>
+                <div class="mini"><div class="ml">Доставок с убытком по марже</div><div class="mv">3 <span class="cur">шт</span></div></div>
+                <div class="mini"><div class="ml">Экономия на консолидации</div><div class="mv">210 <span class="cur">BYN</span></div></div>
+              </div>
+            </div>
+
+            <div class="split">
+              <h3>Наложенный платёж (COD)</h3>
+              <p class="hint">Денежный поток через перевозчиков — контроль возврата выручки</p>
+              <div class="gp-hero"><span class="big" style="color:#2563EB">12 400</span><span class="lbl">BYN к возврату от перевозчиков<br>по 3 отгрузкам в пути</span></div>
+              <div class="cost-row"><div class="cn">Возвращено за период</div><div class="ct"><div class="cf" style="width:100%;background:linear-gradient(90deg,#34D399,#0E9F6E)"></div></div><div class="cm">38 600 BYN<small>17 отгрузок</small></div></div>
+              <div class="cost-row"><div class="cn">В пути (ожидается)</div><div class="ct"><div class="cf" style="width:32%"></div></div><div class="cm">12 400 BYN<small>3 отгрузки</small></div></div>
+              <div class="cost-row"><div class="cn">Комиссия перевозчиков</div><div class="ct"><div class="cf" style="width:6%;background:#D9820B"></div></div><div class="cm">540 BYN<small>1.1% оборота COD</small></div></div>
+            </div>
+          </div>
+
+          <div class="split">
+            <h3>Расход компании по перевозчикам</h3>
+            <p class="hint">Доставки за счёт компании (клиентские исключены) · бенчмарк тарифов</p>
+            <div class="cost-row"><div class="cn"><div class="carrier-logo" style="background:#D6263A;width:28px;height:28px;font-size:10px">DPD</div>DPD</div><div class="ct"><div class="cf" style="width:100%"></div></div><div class="cm">2 180 BYN<small>24 отгр. · 90,8 ср.</small></div></div>
+            <div class="cost-row"><div class="cn"><div class="carrier-logo" style="background:#1E73BE;width:28px;height:28px;font-size:10px">АЛ</div>Автолайт Экспресс</div><div class="ct"><div class="cf" style="width:44%"></div></div><div class="cm">960 BYN<small>18 отгр. · 53,3 ср.</small></div></div>
+            <div class="cost-row"><div class="cn"><div class="carrier-logo" style="background:#0A8344;width:28px;height:28px;font-size:10px">СД</div>СДЭК</div><div class="ct"><div class="cf" style="width:25%"></div></div><div class="cm">540 BYN<small>9 отгр. · 60,0 ср.</small></div></div>
+            <div class="cost-row"><div class="cn"><div class="carrier-logo" style="background:#E11A2C;width:28px;height:28px;font-size:10px">ЕП</div>Европочта</div><div class="ct"><div class="cf" style="width:12%"></div></div><div class="cm">260 BYN<small>12 отгр. · 21,7 ср.</small></div></div>
+          </div>
+
+          <div class="split" style="margin-top:16px">
+            <h3>Аудит счетов перевозчиков</h3>
+            <p class="hint">Фактический счёт сверяется с тарифом из справочника — ловим переплаты, лишние услуги и неверную зону (≈5–6% счетов с ошибкой по отрасли)</p>
+            <div class="mini-grid" style="grid-template-columns:repeat(3,1fr)">
+              <div class="mini"><div class="ml">Проверено счетов</div><div class="mv">51</div></div>
+              <div class="mini"><div class="ml">С расхождением</div><div class="mv" style="color:#D9820B">3 · 5,9%</div></div>
+              <div class="mini"><div class="ml">К возврату / спору</div><div class="mv" style="color:#0E9F6E">26 <span class="cur">BYN</span></div></div>
+            </div>
+            <div style="margin-top:14px">
+              <div class="cost-row"><div class="cn" style="width:auto;flex:1;gap:8px"><span class="chip carrier">DPD</span>ЛОГ-0031 · повторный «забор» 5,00 — нет в заявке</div><div class="cm" style="color:#0E9F6E">+5,00 BYN<small>к возврату</small></div></div>
+              <div class="cost-row"><div class="cn" style="width:auto;flex:1;gap:8px"><span class="chip carrier">СДЭК</span>ЛОГ-0036 · вес округлён 30→32 кг, +12,00 к тарифу</div><div class="cm" style="color:#D9820B">+12,00 BYN<small>на споре</small></div></div>
+              <div class="cost-row"><div class="cn" style="width:auto;flex:1;gap:8px"><span class="chip carrier">Европочта</span>ЛОГ-0028 · в счёте зона 3, по адресу зона 2</div><div class="cm" style="color:#0E9F6E">+9,00 BYN<small>к возврату</small></div></div>
+            </div>
+            <p class="tbl-note">Расхождения уходят в точность счетов перевозчика в Scorecard. Лишние начисления (accessorial) — главная причина ошибок в счетах по отрасли.</p>
+          </div>
+
+          <div class="ai-note" style="margin-top:16px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg><p><b style="color:#5B45C9">ИИ-разбор тарифов — Итерация 1.</b> Сравнение фактических тарифов с прайсами, выявление переплат и рекомендация перераспределения объёмов между DPD/Автолайт/СДЭК с учётом зоны и веса. Недоступно в прототипе.</p></div>
+        </div>
+      </section>
+
+      <!-- ===== TARIFFS & ZONES ===== -->
+      <section class="panel" id="panel-tariffs">
+        <div class="tbl-wrap">
+          <div class="panel-head">
+            <div><h2>Справочник тарифов и зон</h2><p>Эталонные данные для расчёта доставки — тянутся в окно оформления (как нормы в Производстве). Прайс действует с 01.06.2026.</p></div>
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-6.2-8.5"/><path d="M21 3v6h-6"/></svg>Обновить из прайсов</button>
+          </div>
+
+          <!-- Зоны -->
+          <div class="ref-section">
+            <div class="ref-h"><span class="rn">1</span><h3>Зоны доставки по РБ</h3><span class="rc">4 зоны · привязка населённых пунктов</span></div>
+            <table class="table">
+              <thead><tr><th>Зона</th><th>Покрытие</th><th>Города (примеры)</th><th>Срок</th><th class="n">Отгрузок/мес</th></tr></thead>
+              <tbody>
+                <tr><td><span class="zp z1">1</span></td><td class="zone-name">Минск</td><td>Минск и Минский район</td><td>1 дн</td><td class="n">132</td></tr>
+                <tr><td><span class="zp z2">2</span></td><td class="zone-name">Областные центры</td><td>Гомель, Витебск, Гродно, Брест, Могилёв</td><td>1–2 дн</td><td class="n">84</td></tr>
+                <tr><td><span class="zp z3">3</span></td><td class="zone-name">Районные центры</td><td>Барановичи, Бобруйск, Лида, Молодечно, Орша, Пинск</td><td>2–3 дн</td><td class="n">47</td></tr>
+                <tr><td><span class="zp z4">4</span></td><td class="zone-name">Отдалённые</td><td>Малые города, г.п., агрогородки</td><td>3–4 дн</td><td class="n">18</td></tr>
+              </tbody>
+            </table>
+            <p class="tbl-note">Зона определяется по адресу получателя автоматически. Срок — ориентир для расчёта ETA и контроля SLA.</p>
+          </div>
+
+          <!-- Прайс-матрица -->
+          <div class="ref-section">
+            <div class="ref-h"><span class="rn">2</span><h3>Прайс-матрица перевозчиков</h3><span class="rc">тариф за отправление, BYN · по зоне и весу</span></div>
+            <table class="table">
+              <thead><tr><th>Зона</th><th class="n">До 5 кг</th><th class="n">До 10 кг</th><th class="n">До 30 кг</th><th class="n">Свыше 30, /кг</th><th class="n">Забор</th><th class="n">Наложка</th><th class="n">Страховка</th></tr></thead>
+              <tbody>
+                <tr class="grp"><td colspan="8"><div class="grp-cell"><span class="gl" style="background:#D6263A">DPD</span><b>DPD</b><span class="gmin">от 9,50 BYN · API</span></div></td></tr>
+                <tr><td><span class="zp z1">1</span></td><td class="n base">9,50</td><td class="n">14,00</td><td class="n">24,00</td><td class="n">1,50</td><td class="n">5,00</td><td class="n">1,5%</td><td class="n">0,3%</td></tr>
+                <tr><td><span class="zp z2">2</span></td><td class="n base">13,00</td><td class="n">18,00</td><td class="n">28,00</td><td class="n">1,90</td><td class="n">5,00</td><td class="n">1,5%</td><td class="n">0,3%</td></tr>
+                <tr><td><span class="zp z3">3</span></td><td class="n base">16,00</td><td class="n">22,00</td><td class="n">34,00</td><td class="n">2,30</td><td class="n">6,00</td><td class="n">1,5%</td><td class="n">0,3%</td></tr>
+                <tr><td><span class="zp z4">4</span></td><td class="n base">20,00</td><td class="n">27,00</td><td class="n">42,00</td><td class="n">2,80</td><td class="n">7,00</td><td class="n">1,5%</td><td class="n">0,3%</td></tr>
+
+                <tr class="grp"><td colspan="8"><div class="grp-cell"><span class="gl" style="background:#1E73BE">АЛ</span><b>Автолайт Экспресс</b><span class="gmin">от 7,90 BYN · CSV · до двери</span></div></td></tr>
+                <tr><td><span class="zp z1">1</span></td><td class="n base">7,90</td><td class="n">11,50</td><td class="n">20,00</td><td class="n">1,30</td><td class="n">4,00</td><td class="n">1,2%</td><td class="n">0,25%</td></tr>
+                <tr><td><span class="zp z2">2</span></td><td class="n base">10,50</td><td class="n">15,00</td><td class="n">24,00</td><td class="n">1,60</td><td class="n">4,00</td><td class="n">1,2%</td><td class="n">0,25%</td></tr>
+                <tr><td><span class="zp z3">3</span></td><td class="n base">13,00</td><td class="n">18,50</td><td class="n">29,00</td><td class="n">2,00</td><td class="n">5,00</td><td class="n">1,2%</td><td class="n">0,25%</td></tr>
+                <tr><td><span class="zp z4">4</span></td><td class="n base">16,00</td><td class="n">23,00</td><td class="n">36,00</td><td class="n">2,50</td><td class="n">6,00</td><td class="n">1,2%</td><td class="n">0,25%</td></tr>
+
+                <tr class="grp"><td colspan="8"><div class="grp-cell"><span class="gl" style="background:#0A8344">СД</span><b>СДЭК</b><span class="gmin">от 8,40 BYN · API · ПВЗ + курьер</span></div></td></tr>
+                <tr><td><span class="zp z1">1</span></td><td class="n base">8,40</td><td class="n">12,50</td><td class="n">22,00</td><td class="n">1,40</td><td class="n">4,50</td><td class="n">1,5%</td><td class="n">0,3%</td></tr>
+                <tr><td><span class="zp z2">2</span></td><td class="n base">11,00</td><td class="n">16,00</td><td class="n">26,00</td><td class="n">1,75</td><td class="n">4,50</td><td class="n">1,5%</td><td class="n">0,3%</td></tr>
+                <tr><td><span class="zp z3">3</span></td><td class="n base">14,00</td><td class="n">20,00</td><td class="n">31,00</td><td class="n">2,20</td><td class="n">5,50</td><td class="n">1,5%</td><td class="n">0,3%</td></tr>
+                <tr><td><span class="zp z4">4</span></td><td class="n base">17,50</td><td class="n">25,00</td><td class="n">39,00</td><td class="n">2,70</td><td class="n">6,50</td><td class="n">1,5%</td><td class="n">0,3%</td></tr>
+
+                <tr class="grp"><td colspan="8"><div class="grp-cell"><span class="gl" style="background:#E11A2C">ЕП</span><b>Европочта</b><span class="gmin">от 6,50 BYN · CSV · до ПВЗ</span></div></td></tr>
+                <tr><td><span class="zp z1">1</span></td><td class="n base">6,50</td><td class="n">9,50</td><td class="n">16,00</td><td class="n">1,10</td><td class="n muted-cell">—</td><td class="n">1,0%</td><td class="n">0,2%</td></tr>
+                <tr><td><span class="zp z2">2</span></td><td class="n base">8,50</td><td class="n">12,50</td><td class="n">19,50</td><td class="n">1,40</td><td class="n muted-cell">—</td><td class="n">1,0%</td><td class="n">0,2%</td></tr>
+                <tr><td><span class="zp z3">3</span></td><td class="n base">10,50</td><td class="n">15,00</td><td class="n">23,50</td><td class="n">1,80</td><td class="n muted-cell">—</td><td class="n">1,0%</td><td class="n">0,2%</td></tr>
+                <tr><td><span class="zp z4">4</span></td><td class="n base">13,00</td><td class="n">18,50</td><td class="n">29,00</td><td class="n">2,20</td><td class="n muted-cell">—</td><td class="n">1,0%</td><td class="n">0,2%</td></tr>
+
+                <tr class="grp"><td colspan="8"><div class="grp-cell"><span class="gl" style="background:#1A5DAA">БП</span><b>Белпочта</b><span class="gmin">от 4,20 BYN · ручной · отдалённые НП</span></div></td></tr>
+                <tr><td><span class="zp z1">1</span></td><td class="n base">4,20</td><td class="n">6,50</td><td class="n">12,00</td><td class="n">0,90</td><td class="n muted-cell">—</td><td class="n">1,0%</td><td class="n">0,15%</td></tr>
+                <tr><td><span class="zp z2">2</span></td><td class="n base">5,50</td><td class="n">8,50</td><td class="n">15,00</td><td class="n">1,15</td><td class="n muted-cell">—</td><td class="n">1,0%</td><td class="n">0,15%</td></tr>
+                <tr><td><span class="zp z3">3</span></td><td class="n base">7,00</td><td class="n">10,50</td><td class="n">19,00</td><td class="n">1,50</td><td class="n muted-cell">—</td><td class="n">1,0%</td><td class="n">0,15%</td></tr>
+                <tr><td><span class="zp z4">4</span></td><td class="n base">9,00</td><td class="n">13,00</td><td class="n">24,00</td><td class="n">1,90</td><td class="n muted-cell">—</td><td class="n">1,0%</td><td class="n">0,15%</td></tr>
+              </tbody>
+            </table>
+            <p class="tbl-note">Наложка — % от суммы наложенного платежа; страховка — % от объявленной ценности. Тариф = базовая ступень по весу + (оплач. вес − 30) × ставка свыше 30 кг.</p>
+          </div>
+
+          <!-- Легенда / правила расчёта -->
+          <div class="legend">
+            <div class="li"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg><div><b>Оплачиваемый вес</b><span>max(физический, объёмный). Объёмный = Д×Ш×В (см) ÷ 5000.</span></div></div>
+            <div class="li"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><div><b>Зона и срок</b><span>зона берётся по адресу получателя, срок задаёт ETA и порог просрочки SLA.</span></div></div>
+            <div class="li"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><div><b>Пример расчёта</b><span>Минск → Гомель (зона 2), 64 кг, Автолайт: 24,00 + (64−30)×1,60 = <b>78,40 BYN</b>.</span></div></div>
+          </div>
+
+          <div class="ai-note" style="margin-top:16px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg><p><b style="color:#5B45C9">Автообновление прайсов — Итерация 1.</b> Подтягивание актуальных тарифов из API/прайсов перевозчиков и предупреждение об изменениях. В прототипе матрица ведётся вручную, но уже служит источником для окна оформления.</p></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- RIGHT RAIL -->
+  <aside class="rail">
+    <div class="rail-head"><b>Чаты и дела</b><button class="ib"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button></div>
+    <div class="rail-tabs">
+      <button class="rtab active" data-rtab="chats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Чаты</button>
+      <button class="rtab ai" data-rtab="ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg>ИИ-координатор</button>
+    </div>
+    <div class="rail-body">
+      <div class="rpane show" id="rpane-chats">
+        <div class="chat"><div class="ca" style="background:#2563EB">DP</div><div class="cc"><div class="ctop"><span class="cn">DPD · поддержка</span><span class="cw">10:24</span></div><div class="cm">Отгрузка BY284619 прибыла в сортцентр Гомель, доставка завтра до 14:00.</div></div><span class="unread">2</span></div>
+        <div class="chat"><div class="ca" style="background:#0A8344">СД</div><div class="cc"><div class="ctop"><span class="cn">СДЭК · менеджер</span><span class="cw">09:58</span></div><div class="cm">По 1099870042 водитель не дозвонился, оставили на 09.06 — нужен актуальный телефон.</div></div><span class="unread">1</span></div>
+        <div class="chat"><div class="ca" style="background:#7C5CFC">ДЕ</div><div class="cc"><div class="ctop"><span class="cn">Дроздова Е. · Логист</span><span class="cw">09:41</span></div><div class="cm">Оформила DPD на Витебск, тариф 185 BYN, объёмный вес 140 кг. Жду трек.</div></div></div>
+        <div class="chat"><div class="ca" style="background:#D9820B">ЗК</div><div class="cc"><div class="ctop"><span class="cn">Отдел закупок</span><span class="cw">09:15</span></div><div class="cm">Контейнер MSKU9921007 вышел из Нинбо, ориентир по Клайпеде — 28.06.</div></div></div>
+        <div class="chat"><div class="ca" style="background:#0E9F6E">СК</div><div class="cc"><div class="ctop"><span class="cn">Склад</span><span class="cw">Вчера</span></div><div class="cm">Готовы принять возврат ЛОГ-0021 (4 АКБ, брак), оформим по приёмке.</div></div></div>
+        <div class="chat"><div class="ca" style="background:#1E73BE">АЛ</div><div class="cc"><div class="ctop"><span class="cn">Автолайт Экспресс</span><span class="cw">Вчера</span></div><div class="cm">Реестр на 08.06 принят, наложка 6 200 BYN перечислена на счёт.</div></div></div>
+      </div>
+
+      <div class="rpane" id="rpane-ai">
+        <div class="ai-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg><p><b style="color:#5B45C9">ИИ-координатор логистики</b> — Итерация 1. Предложения формируются автоматически, решение — за человеком. Ниже превью; в прототипе функции недоступны.</p></div>
+        <div class="ai-inbox-card"><div class="aih"><span class="ai-spark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg></span><b>Риск SLA</b><span class="ai-badge">Превью</span></div><p>ЛОГ-0033 (СДЭК) просрочен 2 дня. Эскалировать перевозчику и предложить клиенту компенсацию доставки?</p><div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Ответственный: Логист Дроздова Е.</div><div class="ai-actions"><button class="ai-act">Принять</button><button class="ai-act">Назначить</button><button class="ai-act">Отклонить</button></div></div>
+        <div class="ai-inbox-card"><div class="aih"><span class="ai-spark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg></span><b>Дорогая доставка</b><span class="ai-badge">Превью</span></div><p>По ЛОГ-0035 доставка DPD = 13% маржи. На зону 2 Автолайт дешевле на ~18% при том же сроке — перенести?</p><div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Ответственный: Диспетчер Карпович А.</div><div class="ai-actions"><button class="ai-act">Принять</button><button class="ai-act">Назначить</button><button class="ai-act">Отклонить</button></div></div>
+        <div class="ai-inbox-card"><div class="aih"><span class="ai-spark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg></span><b>Консолидация</b><span class="ai-badge">Превью</span></div><p>Две доставки в Витебск на завтра (ЛОГ-0039, ЛОГ-0046). Объединить в один заказ DPD — экономия ≈ 70 BYN.</p><div class="src"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Ответственный: Диспетчер Карпович А.</div><div class="ai-actions"><button class="ai-act">Принять</button><button class="ai-act">Назначить</button><button class="ai-act">Отклонить</button></div></div>
+      </div>
+    </div>
+    <div class="rail-foot"><a href="#">Все чаты и дела →</a></div>
+  </aside>
+
+  <!-- MODAL: tariff comparison -->
+  <div class="modal-overlay" id="rateModal">
+    <div class="modal">
+      <div class="modal-head">
+        <div><h3>Оформление доставки · выбор перевозчика</h3><div class="msub">ЛОГ-2026-0042 · ООО ЭнергоСистемы · Минск → Гомель (зона 2)</div></div>
+        <button class="modal-x js-close-modal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="modal-body">
+        <div class="sec-label">Параметры груза</div>
+        <div class="mp-grid">
+          <div class="mp"><div class="l">Мест</div><div class="v">3</div></div>
+          <div class="mp"><div class="l">Физ. вес</div><div class="v">64 кг</div></div>
+          <div class="mp"><div class="l">Объёмный вес</div><div class="v vol">52 кг</div></div>
+          <div class="mp"><div class="l">Оплачиваемый</div><div class="v">64 кг</div></div>
+        </div>
+
+        <div class="sec-label">Тарифы перевозчиков · зона 2 × 64 кг (из справочника тарифов)</div>
+        <label class="rate sel">
+          <div class="rlogo" style="background:#1E73BE">АЛ</div>
+          <div class="rinfo"><b>Автолайт Экспресс <span class="badge-best">до двери</span></b><span>CSV-реестр · доставка до двери</span></div>
+          <div class="rmeta"><div class="rm"><span class="rl">Срок</span><span class="rv">2 дн</span></div><div class="rm"><span class="rl">Тариф</span><span class="rv price">78 BYN</span></div></div>
+        </label>
+        <label class="rate">
+          <div class="rlogo" style="background:#D6263A">DPD</div>
+          <div class="rinfo"><b>DPD <span class="badge-fast">быстрее</span></b><span>API · трекинг в реальном времени</span></div>
+          <div class="rmeta"><div class="rm"><span class="rl">Срок</span><span class="rv">1 дн</span></div><div class="rm"><span class="rl">Тариф</span><span class="rv price">93 BYN</span></div></div>
+        </label>
+        <label class="rate">
+          <div class="rlogo" style="background:#0A8344">СД</div>
+          <div class="rinfo"><b>СДЭК</b><span>API · ПВЗ + курьер</span></div>
+          <div class="rmeta"><div class="rm"><span class="rl">Срок</span><span class="rv">2 дн</span></div><div class="rm"><span class="rl">Тариф</span><span class="rv price">86 BYN</span></div></div>
+        </label>
+        <label class="rate">
+          <div class="rlogo" style="background:#E11A2C">ЕП</div>
+          <div class="rinfo"><b>Европочта <span class="badge-best">дешевле</span></b><span>CSV · до ПВЗ (110+ пунктов)</span></div>
+          <div class="rmeta"><div class="rm"><span class="rl">Срок</span><span class="rv">2 дн</span></div><div class="rm"><span class="rl">Тариф</span><span class="rv price">67 BYN</span></div></div>
+        </label>
+
+        <div class="sec-label" style="margin-top:18px">Опции отправления</div>
+        <div class="opt-row">
+          <div class="opt"><span class="oi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span><div class="oc"><b>Наложенный платёж</b><span>выручка через перевозчика</span></div><span class="mini-switch js-switch"></span></div>
+          <div class="opt"><span class="oi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><div class="oc"><b>Страхование груза</b><span>объявленная ценность 12 800 BYN</span></div><span class="mini-switch on js-switch"></span></div>
+        </div>
+
+        <div class="modal-ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg><p><b style="color:#5B45C9">Сравнение тарифов — ручное (по прайсам).</b> Автоподбор оптимального перевозчика с учётом OTD и доли в марже заказа — Итерация 1.</p></div>
+      </div>
+      <div class="modal-foot">
+        <div class="foot-total">Доставка: <b>78 BYN</b> · 1.3% маржи заказа</div>
+        <div class="foot-btns"><button class="btn js-close-modal">Отмена</button><button class="btn btn-primary js-close-modal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg> Оформить заказ · Автолайт</button></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const tabs = document.querySelectorAll('.tab');
+  const panels = {
+    delivery: document.getElementById('panel-delivery'),
+    import: document.getElementById('panel-import'),
+    carriers: document.getElementById('panel-carriers'),
+    problems: document.getElementById('panel-problems'),
+    costs: document.getElementById('panel-costs'),
+    tariffs: document.getElementById('panel-tariffs'),
+  };
+  const crumb = document.getElementById('crumbTab');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    Object.values(panels).forEach(p => p.classList.remove('show'));
+    panels[t.dataset.tab].classList.add('show');
+    crumb.textContent = t.dataset.name;
+    document.querySelector('.scroll').scrollTop = 0;
+  }));
+
+  const rtabs = document.querySelectorAll('.rtab');
+  const rpanes = { chats: document.getElementById('rpane-chats'), ai: document.getElementById('rpane-ai') };
+  rtabs.forEach(t => t.addEventListener('click', () => {
+    rtabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    Object.values(rpanes).forEach(p => p.classList.remove('show'));
+    rpanes[t.dataset.rtab].classList.add('show');
+  }));
+
+  document.getElementById('aiToggle').addEventListener('click', () => document.body.classList.toggle('ai-on'));
+
+  document.querySelectorAll('.star').forEach(s => s.addEventListener('click', e => {
+    e.stopPropagation();
+    s.classList.toggle('on');
+    s.closest('.card').classList.toggle('focus');
+  }));
+
+  const modal = document.getElementById('rateModal');
+  document.querySelectorAll('.js-open-modal').forEach(b => b.addEventListener('click', () => modal.classList.add('show')));
+  document.querySelectorAll('.js-close-modal').forEach(b => b.addEventListener('click', () => modal.classList.remove('show')));
+  modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') modal.classList.remove('show'); });
+
+  document.querySelectorAll('.rate').forEach(r => r.addEventListener('click', () => {
+    document.querySelectorAll('.rate').forEach(x => x.classList.remove('sel'));
+    r.classList.add('sel');
+    const name = r.querySelector('.rinfo b').childNodes[0].textContent.trim();
+    const price = r.querySelector('.rv.price').textContent.trim();
+    document.querySelector('.foot-total b').textContent = price;
+    document.querySelector('.foot-btns .btn-primary').lastChild.textContent = ' Оформить заказ · ' + name;
+  }));
+
+  document.querySelectorAll('.js-switch').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));
+</script>
+</body>
+</html>
