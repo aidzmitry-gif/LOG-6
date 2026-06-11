@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.runtime.core import Core
 from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
+from core.services.config import get_settings
 from modules.logistics import analytics, fleet, notify, pricing, seeds
 from modules.logistics.models import (
     Carrier,
@@ -899,6 +900,7 @@ async def broadcast_rfq(
     contacts = {
         c.code: c.contact for c in (await session.execute(select(Carrier))).scalars().all()
     }
+    settings = get_settings()
     carriers: list[str] = []
     notified = 0
     for code, _m in matches:
@@ -912,7 +914,7 @@ async def broadcast_rfq(
             rfq.number, rfq.cargo, float(rfq.weight_kg or 0),
             rfq.route_from, rfq.route_to, _carrier_name(code), f"/logistics/rfqs/bid/{token}",
         )
-        result = notify.send_invite(channel, contact, message)
+        result = notify.send_invite(channel, contact, message, settings=settings)
         session.add(CarrierRfqInvite(
             rfq_id=rfq_id, carrier_code=code, token=token, channel=result["channel"],
             status="sent" if result["status"] == "sent" else "invited",

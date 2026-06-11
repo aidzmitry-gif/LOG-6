@@ -35,13 +35,62 @@ def invite_message(number: str, cargo: str, weight_kg: float, route_from: str,
     )
 
 
-def send_invite(channel: str, contact: str, message: str) -> dict:
-    """«Отправить» приглашение. ``none`` пропускается, остальные каналы логируются.
+def send_invite(channel: str, contact: str, message: str, *, settings=None) -> dict:
+    """«Отправить» приглашение перевозчику. ``none`` пропускается.
 
-    Возвращает ``{status, channel, detail}`` (``status`` ∈ sent/skipped). Реальная
-    доставка по каналу — Итерация 1 (подменяется здесь без изменения вызова).
+    Если для канала задан реальный транспорт (SMTP для email / Bot API для telegram в
+    ``settings``) — отправляет по-настоящему; иначе MVP-лог (как раньше). Возвращает
+    ``{status, channel, detail}`` (``status`` ∈ sent/skipped/failed). Ошибку реальной
+    отправки фиксируем явно (``failed``) — не молчим.
     """
     if channel == "none":
         return {"status": "skipped", "channel": "none", "detail": "нет контакта перевозчика"}
+    try:
+        if channel == "email" and settings and getattr(settings, "smtp_host", ""):
+            _send_email(settings, contact, "Приглашение в тендер на перевозку", message)
+            return {"status": "sent", "channel": "email", "detail": f"email → {contact}"}
+        if channel == "telegram" and settings and getattr(settings, "telegram_bot_token", ""):
+            _send_telegram(settings, _tg_chat(contact), message)
+            return {"status": "sent", "channel": "telegram", "detail": f"telegram → {contact}"}
+    except Exception as exc:  # noqa: BLE001 — рассылка best-effort; ошибку фиксируем явно
+        logger.warning("tender invite send failed (%s → %s): %s", channel, contact, exc)
+        return {"status": "failed", "channel": channel, "detail": f"ошибка отправки: {exc}"}
+    # реальный транспорт не сконфигурирован → MVP-лог
     logger.info("tender invite via %s → %s: %s", channel, contact, message)
     return {"status": "sent", "channel": channel, "detail": f"отправлено ({channel}, MVP-лог)"}
+
+
+def _tg_chat(contact: str) -> str:
+    """chat_id для Telegram из контакта: ``tg:123`` → ``123``; иначе — как есть (@channel/id)."""
+    c = (contact or "").strip()
+    return c[3:] if c.lower().startswith("tg:") else c
+
+
+def _send_email(settings, to_addr: str, subject: str, body: str) -> None:
+    """Отправить email через SMTP (smtplib). Реальная рассылка — за конфигом ``AIOS_SMTP_*``."""
+    import smtplib
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["From"] = getattr(settings, "smtp_from", "no-reply@aios.local")
+    msg["To"] = to_addr
+    msg["Subject"] = subject
+    msg.set_content(body)
+    with smtplib.SMTP(settings.smtp_host, getattr(settings, "smtp_port", 587), timeout=10) as smtp:
+        if getattr(settings, "smtp_tls", True):
+            smtp.starttls()
+        if getattr(settings, "smtp_user", ""):
+            smtp.login(settings.smtp_user, getattr(settings, "smtp_password", ""))
+        smtp.send_message(msg)
+
+
+def _send_telegram(settings, chat_id: str, text: str) -> None:
+    """Отправить сообщение через Telegram Bot API (httpx). Токен — ``AIOS_TELEGRAM_BOT_TOKEN``.
+
+    Для личных чатов нужен числовой ``chat_id`` (перевозчик должен начать диалог с ботом);
+    ``@username`` работает только для каналов. Полный онбординг перевозчиков — Итерация 2.
+    """
+    import httpx
+
+    url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
+    httpx.post(url, json={"chat_id": chat_id, "text": text}, timeout=10).raise_for_status()
