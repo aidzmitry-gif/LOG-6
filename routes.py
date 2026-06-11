@@ -16,11 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.runtime.core import Core
 from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
-from modules.logistics import pricing, seeds
+from modules.logistics import fleet, pricing, seeds
 from modules.logistics.models import (
     Carrier,
+    CarrierCargoCapability,
     CarrierScorecard,
     CarrierTariff,
+    CarrierVehicle,
     FreightAuditLog,
     ImportShipment,
     Shipment,
@@ -31,6 +33,8 @@ from modules.logistics.schemas import (
     AuditEntryCreate,
     AuditEntryOut,
     AuditReportOut,
+    CapabilityCreate,
+    CapabilityOut,
     CarrierCatalogItem,
     CarrierCostStat,
     CarrierCreate,
@@ -40,6 +44,7 @@ from modules.logistics.schemas import (
     CarrierTariffOut,
     CostReportOut,
     DashboardOut,
+    EligibleCarrierOut,
     ImportShipmentCreate,
     ImportShipmentOut,
     ImportStageUpdate,
@@ -50,6 +55,8 @@ from modules.logistics.schemas import (
     ShipmentOut,
     StatusUpdate,
     TrackingUpdate,
+    VehicleCreate,
+    VehicleOut,
     ZoneOut,
 )
 from modules.logistics.stages import DELIVERY_STAGES, IMPORT_STAGES
@@ -641,3 +648,108 @@ async def costs_audit(period: str = "", session: AsyncSession = Depends(get_sess
         to_recover=round(to_recover, 2),
         items=[AuditEntryOut.model_validate(r) for r in rows],
     )
+
+
+# --- Парк машин и пригодность груза (Блок 2) -----------------------------------
+def _carrier_name(code: str) -> str:
+    """Имя перевозчика по коду (каталог РБ + свой транспорт)."""
+    return _CARRIER_NAME.get(code) or seeds.CARRIER_NAMES_EXTRA.get(code, code)
+
+
+@router.post("/fleet/seed", response_model=dict)
+async def seed_fleet(session: AsyncSession = Depends(get_session)):
+    """Заполнить парк машин и допуски перевозчиков (идемпотентно)."""
+    have_vehicles = {
+        (v.carrier_code, v.vehicle_class)
+        for v in (await session.execute(select(CarrierVehicle))).scalars().all()
+    }
+    for item in seeds.VEHICLES_SEED:
+        if (item["carrier_code"], item["vehicle_class"]) not in have_vehicles:
+            session.add(CarrierVehicle(**item))
+    have_caps = {
+        (c.carrier_code, c.category)
+        for c in (await session.execute(select(CarrierCargoCapability))).scalars().all()
+    }
+    for item in seeds.CAPABILITIES_SEED:
+        if (item["carrier_code"], item["category"]) not in have_caps:
+            session.add(CarrierCargoCapability(**item))
+    await session.commit()
+    vehicles = (await session.execute(select(CarrierVehicle))).scalars().all()
+    caps = (await session.execute(select(CarrierCargoCapability))).scalars().all()
+    return {"vehicles": len(vehicles), "capabilities": len(caps)}
+
+
+@router.get("/carriers/{code}/vehicles", response_model=list[VehicleOut])
+async def list_vehicles(code: str, session: AsyncSession = Depends(get_session)):
+    """Парк машин перевозчика."""
+    return (
+        await session.execute(select(CarrierVehicle).where(CarrierVehicle.carrier_code == code))
+    ).scalars().all()
+
+
+@router.post("/carriers/{code}/vehicles", response_model=VehicleOut, status_code=201)
+async def add_vehicle(code: str, payload: VehicleCreate, session: AsyncSession = Depends(get_session)):
+    """Добавить машину в парк перевозчика."""
+    obj = CarrierVehicle(carrier_code=code, **payload.model_dump())
+    session.add(obj)
+    await session.commit()
+    await session.refresh(obj)
+    return obj
+
+
+@router.get("/carriers/{code}/cargo-capabilities", response_model=list[CapabilityOut])
+async def list_capabilities(code: str, session: AsyncSession = Depends(get_session)):
+    """Допуски перевозчика по категориям груза."""
+    return (
+        await session.execute(
+            select(CarrierCargoCapability).where(CarrierCargoCapability.carrier_code == code)
+        )
+    ).scalars().all()
+
+
+@router.post("/carriers/{code}/cargo-capabilities", response_model=CapabilityOut, status_code=201)
+async def add_capability(code: str, payload: CapabilityCreate, session: AsyncSession = Depends(get_session)):
+    """Добавить допуск перевозчика по категории груза."""
+    obj = CarrierCargoCapability(carrier_code=code, **payload.model_dump())
+    session.add(obj)
+    await session.commit()
+    await session.refresh(obj)
+    return obj
+
+
+@router.get("/carriers/eligible", response_model=list[EligibleCarrierOut])
+async def eligible_carriers(
+    weight_kg: float = 0,
+    category: str = "",
+    needs_temp: bool = False,
+    max_dim_cm: int = 0,
+    adr: bool = False,
+    session: AsyncSession = Depends(get_session),
+):
+    """Перевозчики, пригодные под груз: достаточная машина + допуск к категории.
+
+    Подбор по парку (``capacity_kg`` ≥ веса, термо-режим при ``needs_temp``) и
+    допускам (категория, ADR, лимиты веса/габарита). Это таргет для рассылки
+    тендера (Блок 4) и замена статичного флага «тяжёлый груз».
+    """
+    vehicles = (await session.execute(select(CarrierVehicle))).scalars().all()
+    caps = (await session.execute(select(CarrierCargoCapability))).scalars().all()
+    by_carrier: dict[str, dict] = {}
+    for v in vehicles:
+        by_carrier.setdefault(v.carrier_code, {"vehicles": [], "caps": []})["vehicles"].append(v)
+    for c in caps:
+        by_carrier.setdefault(c.carrier_code, {"vehicles": [], "caps": []})["caps"].append(c)
+
+    result: list[EligibleCarrierOut] = []
+    for code, data in by_carrier.items():
+        match = fleet.carrier_eligible(
+            data["vehicles"], data["caps"],
+            weight_kg=weight_kg, category=category,
+            needs_temp=needs_temp, max_dim_cm=max_dim_cm, adr=adr,
+        )
+        if match is not None:
+            result.append(EligibleCarrierOut(
+                carrier_code=code, carrier=_carrier_name(code),
+                vehicle_class=match["vehicle_class"], capacity_kg=match["capacity_kg"],
+            ))
+    return sorted(result, key=lambda e: e.capacity_kg)

@@ -329,6 +329,56 @@ class AuditReportOut(BaseModel):
     items: list[AuditEntryOut]
 
 
+# --- Парк машин и пригодность груза (Блок 2) ----------------------------------
+class VehicleCreate(BaseModel):
+    vehicle_class: str
+    capacity_kg: float = 0
+    volume_m3: float = 0
+    temp_control: bool = False
+    count: int = 1
+
+
+class VehicleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    carrier_code: str
+    vehicle_class: str
+    capacity_kg: float = 0
+    volume_m3: float = 0
+    temp_control: bool = False
+    count: int = 1
+
+
+class CapabilityCreate(BaseModel):
+    category: str
+    adr: bool = False
+    oversize: bool = False
+    max_weight_kg: float = 0
+    max_dim_cm: int = 0
+
+
+class CapabilityOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    carrier_code: str
+    category: str
+    adr: bool = False
+    oversize: bool = False
+    max_weight_kg: float = 0
+    max_dim_cm: int = 0
+
+
+class EligibleCarrierOut(BaseModel):
+    """Пригодный перевозчик под груз: код, имя, подходящая машина."""
+
+    carrier_code: str
+    carrier: str
+    vehicle_class: str
+    capacity_kg: float
+
+
 # --- Справочник перевозчиков РБ (сиды + каталог, log-5) -----------------------
 # Способ интеграции в прототипе: manual/csv. Реальные API — Итерация 1+.
 # track_url — шаблон ссылки трекинга ({n} = трек-номер), уточняется при подключении.

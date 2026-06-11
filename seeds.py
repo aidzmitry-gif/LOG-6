@@ -108,3 +108,51 @@ AUDIT_SEED: list[dict] = [
      "invoice_amount": 23.50, "expected_amount": 14.50, "variance": 9.00,
      "reason": "Зона 3 вместо фактической 2", "status": "open"},
 ]
+
+# --- Парк машин перевозчиков (Блок 2) --------------------------------------- #
+# Свой транспорт — не из CARRIERS_RB; имя для подбора берётся отсюда.
+CARRIER_NAMES_EXTRA: dict[str, str] = {"own": "Свой транспорт"}
+
+# (carrier_code, vehicle_class, capacity_kg, volume_m3, temp_control, count)
+_VEHICLES_RAW: list[tuple] = [
+    ("dpd", "Газель 1.5т", 1500, 9, False, 12),
+    ("dpd", "Фургон 3.5т", 3500, 16, False, 6),
+    ("autolight", "Тент 5т", 5000, 30, False, 8),
+    ("autolight", "Фура 20т", 20000, 86, False, 4),
+    ("cdek", "Газель 1.5т", 1500, 9, False, 10),
+    ("cdek", "Фургон 3.5т", 3500, 16, False, 5),
+    ("evropochta", "Фургон 2т", 2000, 12, False, 7),
+    ("belpost", "Фургон 1.5т", 1500, 10, False, 9),
+    ("own", "Тент 5т", 5000, 30, False, 2),
+    ("own", "Манипулятор 10т", 10000, 0, False, 1),
+    ("own", "Рефрижератор 8т", 8000, 40, True, 1),
+]
+VEHICLES_SEED: list[dict] = [
+    {"carrier_code": c, "vehicle_class": cls, "capacity_kg": cap,
+     "volume_m3": vol, "temp_control": temp, "count": n}
+    for c, cls, cap, vol, temp, n in _VEHICLES_RAW
+]
+
+# (carrier_code, category, adr, oversize, max_weight_kg, max_dim_cm)
+_CAPABILITIES_RAW: list[tuple] = [
+    ("dpd", "обычный", False, False, 0, 0),
+    ("dpd", "хрупкое", False, False, 0, 0),
+    ("autolight", "обычный", False, False, 0, 0),
+    ("autolight", "АКБ", False, False, 0, 0),
+    ("autolight", "негабарит", False, True, 0, 600),
+    ("autolight", "опасный_ADR", True, False, 0, 0),
+    ("cdek", "обычный", False, False, 0, 0),
+    ("cdek", "хрупкое", False, False, 0, 0),
+    ("cdek", "АКБ", False, False, 1000, 0),
+    ("evropochta", "обычный", False, False, 30, 0),
+    ("belpost", "обычный", False, False, 20, 0),
+    ("own", "обычный", False, False, 0, 0),
+    ("own", "АКБ", False, False, 0, 0),
+    ("own", "негабарит", False, True, 0, 800),
+    ("own", "температурный", False, False, 0, 0),
+]
+CAPABILITIES_SEED: list[dict] = [
+    {"carrier_code": c, "category": cat, "adr": adr, "oversize": ov,
+     "max_weight_kg": mw, "max_dim_cm": md}
+    for c, cat, adr, ov, mw, md in _CAPABILITIES_RAW
+]

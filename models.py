@@ -214,3 +214,48 @@ class FreightAuditLog(Base):
     reason: Mapped[str] = mapped_column(String(255), default="", server_default="")
     status: Mapped[str] = mapped_column(String(16), default="open", server_default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class CarrierVehicle(Base):
+    """Машина в парке перевозчика: класс, грузоподъёмность, объём, температурный режим.
+
+    Парк определяет, какой груз перевозчик физически может взять (подбор по весу
+    в ``fleet.eligible_carriers``). ``temp_control`` — рефрижератор (термо-груз);
+    ``count`` — сколько таких машин (для оценки доступности).
+    """
+
+    __tablename__ = "carrier_vehicle"
+    __table_args__ = {"schema": "logistics"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    carrier_code: Mapped[str] = mapped_column(String(32))
+    vehicle_class: Mapped[str] = mapped_column(String(64))            # "Газель 1.5т"/"Тент 5т"/"Фура 20т"/…
+    capacity_kg: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), server_default="0")
+    volume_m3: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("0"), server_default="0")
+    temp_control: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # рефрижератор
+    count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class CarrierCargoCapability(Base):
+    """Какие грузы возит перевозчик: категория + ограничения (вес/габарит/ADR).
+
+    Категории прототипа: ``обычный`` / ``АКБ`` / ``опасный_ADR`` / ``хрупкое`` /
+    ``негабарит`` / ``температурный``. Лимиты ``0`` = без явного ограничения.
+    ``adr`` — допуск к опасным грузам (ДОПОГ). Подбор — ``fleet.eligible_carriers``.
+    """
+
+    __tablename__ = "carrier_cargo_capability"
+    __table_args__ = (
+        UniqueConstraint("carrier_code", "category", name="uq_cargo_capability"),
+        {"schema": "logistics"},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    carrier_code: Mapped[str] = mapped_column(String(32))
+    category: Mapped[str] = mapped_column(String(32))                 # обычный/АКБ/опасный_ADR/хрупкое/негабарит/температурный
+    adr: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")          # допуск к опасным грузам
+    oversize: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")     # негабарит
+    max_weight_kg: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), server_default="0")  # 0 = без лимита
+    max_dim_cm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")            # макс. габарит, 0 = без лимита
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
