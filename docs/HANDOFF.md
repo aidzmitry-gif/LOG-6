@@ -1,0 +1,140 @@
+# HANDOFF — Модуль «Логистика» (CMR-ERP). Продолжение в Claude Code
+
+Документ-передача для продолжения работы в VS Code / Claude Code с чистого контекста.
+Дата: 2026-06-11. Домен: **Логистика** (`modules/logistics` → репозиторий `LOG-6`).
+
+---
+
+## 0. TL;DR — что перенести и с чего начать
+
+- **Бэкенд уже в `LOG-6`** (submodule). В Claude Code просто сделай `git pull` — подтянется.
+- **Перенести нужно 3 вещи (этот комплект):**
+  1. `ui/logistics-module.html` — эталонный UI-макет модуля (6 вкладок). Референс для фронтенда.
+  2. `docs/HANDOFF.md` (этот файл) — состояние и следующие шаги.
+  3. `docs/BACKEND_SPEC_tariffs_scorecard_audit.md` — контракты новых таблиц/эндпоинтов.
+- **Стартовый промпт для Claude Code** — в конце файла (раздел 6).
+
+---
+
+## 1. Контекст
+
+Модуль «Логистика» AI-First ERP. Два плеча:
+- **Доставка клиентам по РБ/РФ** через перевозчиков (DPD, Автолайт Экспресс, СДЭК, Европочта, Белпочта).
+- **Импорт из Китая** (фабрика → консолидация → в пути → таможня → приёмка на склад).
+
+Валюта BYN. Стек: фронт Next.js 15 / React 19 / TS / Tailwind 3.4 / App Router; бэк FastAPI / Python (`aios`, `core/`, `modules/<name>/`, Alembic, CI gate 90%).
+
+**Жёсткие принципы проекта (соблюдать в любом коде):**
+- AI-функции = **Итерация 1**. В прототипе нулевой функциональный AI; AI-элементы — ghost-плейсхолдеры (фиолетовый пунктир, бейдж «Итерация 1 · ИИ»). Бэкенд оставляет поле `insight` пустым, фронт его бейджит.
+- **Человек всегда на карточке** — у каждой карточки ответственный (Диспетчер/Логист), даже если есть AI-агент.
+- **Gross profit, а не объём** — KPI вокруг маржи (расход на доставку как % валовой прибыли).
+- **Разделение ролей** — кладовщик/сборщик/диспетчер выполняют физ. операции; коммерческие действия (цена, резерв) принадлежат CRM/продажам.
+- **Дизайн-система строгая** — Golos Text, сетка `236px / 1fr / 320px`, канбан-доминантный layout + правый рейл (чаты + AI-инбокс), единая anatomy карточек (ID, бейдж приоритета, ответственный, AI-бейдж, кнопки).
+
+---
+
+## 2. Состояние БЭКЕНДА (`LOG-6`, ветка `main`) — РЕАЛИЗОВАНО и ЗАПУШЕНО
+
+`LOG-6` — это submodule `modules/logistics`. Файлы лежат **в корне** репозитория `LOG-6` (не под `modules/logistics/`).
+
+Файлы и что в них:
+- **`stages.py`** — стадии воронок.
+  - `DELIVERY_STAGES`: `planned`(Заявка/#3B82F6) → `assigned`(Перевозчик назначен/#8B5CF6) → `in_transit`(В пути/#F59E0B) → `delivered`(Доставлено/#22C55E).
+  - `IMPORT_STAGES`: `factory` → `consolidation` → `in_transit` → `customs`(#EC4899) → `warehouse`(#22C55E).
+- **`models.py`** — `Shipment`, `ImportShipment`, `Carrier` (schema `logistics.*`, у всех новых колонок `server_default`).
+  - `Shipment`: + `carrier_code`, `carrier_order_no`, `payer` ("компания"/"клиент"), `tracking_status`.
+  - `Carrier`: + `code`, `track_url`.
+- **`schemas.py`** — Pydantic: `CarrierCatalogItem`, `CarrierOrderRequest`, `TrackingUpdate`, `CarrierCostStat`, `CostReportOut`, `DashboardOut` (+`shipping_cost_company`, `cost_by_carrier`). Константа `CARRIERS_RB` (5 перевозчиков РБ с шаблонами `track_url`).
+- **`routes.py`** — prefix `/logistics`, 16 эндпоинтов. Ключевые:
+  - `POST /shipments/{id}/carrier-order` — назначает перевозчика, генерит номер заказа, ставит стоимость, `planned→assigned`, эмитит `logistics.carrier_order.created`.
+  - `PATCH /shipments/{id}/tracking` — обновляет трекинг-статус.
+  - `GET /carriers/catalog`, `POST /carriers/seed` (идемпотентно по `code`).
+  - `GET /costs` — total/company/client/import_cost/by_carrier (клиентские исключены из расхода компании; `CLIENT_PAYER="клиент"`).
+- **`module.py`** (v0.2.0) — `include_router`, подписка `sales.document.posted` → `on_document_posted`, 2 виджета (Логистика, Импорт из Китая).
+- **`events.py`** — НЕ менялся (совместим): на order-kind создаёт `Shipment`, эмитит `logistics.shipment.created`.
+
+Последние коммиты сессии (свериться `git log` в `LOG-6`):
+`stages ab8ef828` · `module 4e68e557` (v0.2.0) · `models d33edab8` · `schemas 1e90e030` · `routes 5ece3ab2`.
+
+### PENDING по бэкенду (сделать в Claude Code — нужен терминал/Alembic):
+1. **Alembic-миграция** для новых/расширенных таблиц (безопасно — у всех новых колонок `server_default`):
+   ```bash
+   alembic revision --autogenerate -m "logistics: carrier orders, payer, tracking"
+   alembic upgrade head
+   ```
+2. **Сдвинуть указатель submodule** в супер-проекте `CMR-ERP_main`:
+   ```bash
+   git submodule update --remote modules/logistics
+   git add modules/logistics && git commit -m "bump logistics submodule"
+   ```
+3. **pytest** для прохождения 90% coverage gate (тесты на carrier-order, /costs, tracking).
+4. **Новые таблицы** (zones, carrier_tariffs, carrier_scorecard, freight_audit_log) — см. `BACKEND_SPEC_*.md`.
+
+---
+
+## 3. Состояние ФРОНТЕНДА — эталонный HTML-макет `ui/logistics-module.html`
+
+Self-contained HTML (всё inline, Golos Text через Google Fonts). **Это дизайн-референс**, не продакшн-код. По нему реализуем React-модуль (паттерн как `leads-workspace.tsx`).
+
+**6 вкладок:**
+1. **Доставка РБ/РФ** — канбан 4 стадии (Заявка → Перевозчик назначен → В пути → Доставлено). KPI: Грузы в пути, Просрочки SLA, **OTIF**, **FADR (с 1-й попытки)**, Расход компании (% валовой прибыли). Карточки: объёмный вес (мест/физ./об. → оплачиваемый), доля доставки в марже, COD-чип, документ ТТН-1, POD (получатель+время+подпись), самовывоз, бейдж «Просрочено», чип «Клиент уведомлён».
+2. **Импорт из Китая** — канбан 5 стадий (флаг, контейнеры, Incoterms, PO, себестоимость).
+3. **Перевозчики → Scorecard** — взвешенная оценка A/B/C: в срок, брак-free %, точность счетов %, претензии %, ставка/дост.; формула (в срок 40% · брак 25% · счета 20% · претензии 15%); балл управляет распределением объёмов.
+4. **Тарифы и зоны** (справочник, как «Нормы» в Производстве) — таблица зон (4 зоны РБ) + прайс-матрица (перевозчик × зона × весовая ступень + забор/наложка/страховка). Источник для расчёта в окне оформления.
+5. **Проблемы и возвраты** — канбан исключений: недозвон → отказ/повреждение → переадресация → возврат на склад (эскалация, претензия→Юрист, передача в Склад).
+6. **Расходы** — дашборд: доставка к валовой прибыли (4.2%), COD (к возврату/возвращено/комиссия), расход по перевозчикам, **аудит счетов** (факт vs тариф из справочника, расхождения).
+
+**Правый рейл:** Чаты + ИИ-координатор (инбокс-превью с Принять/Назначить/Отклонить — задизейблено, Итерация 1). Тумблер «Режим ИИ» в шапке.
+
+**Применённые best-practices (из ресёрча, отражены в макете):**
+OTIF (в срок и в полном), FADR (лидеры >93%, провал <3%), Perfect Order (~84% норма), Scorecard перевозчика, аудит счетов (5–6% счетов с ошибкой), уведомления клиента (рычаг FADR), объёмный вес, расход к выручке/марже, POD, обработка исключений, консолидация.
+
+---
+
+## 4. Следующие шаги (приоритет)
+
+**Бэкенд:**
+1. Alembic-миграция + submodule bump (см. §2).
+2. Новые таблицы `zones`, `carrier_tariffs` + хелпер расчёта тарифа `quote_tariff(carrier, zone, weight, opts)` → используется эндпоинтом расчёта при оформлении (`POST /shipments/{id}/quote`).
+3. `carrier_scorecard` (период, метрики, grade/score) + `GET /carriers/scorecard`.
+4. `freight_audit_log` (счёт vs ожидаемый тариф, variance, статус) + `GET /costs/audit`.
+5. pytest, прохождение coverage gate.
+
+**Фронтенд (Next.js):**
+1. Создать страницу/воркспейс модуля логистики по макету (6 вкладок, табы, правый рейл).
+2. Компоненты карточек по anatomy; AI-элементы как Итерация-1 плейсхолдеры.
+3. Окно оформления (модалка выбора перевозчика) — тянет тариф из `carrier_tariffs` через `/quote`, показывает долю в марже.
+4. Подключить `/costs`, `/carriers/scorecard`, `/costs/audit`.
+
+---
+
+## 5. Куда положен этот комплект (в `LOG-6`)
+
+```
+LOG-6/
+├── ui/logistics-module.html                       # эталонный макет
+├── docs/HANDOFF.md                                 # этот файл
+└── docs/BACKEND_SPEC_tariffs_scorecard_audit.md    # спека новых таблиц
+```
+Если работаешь из супер-проекта `CMR-ERP_main` — после `git pull` обнови submodule:
+`git submodule update --init --remote modules/logistics`.
+
+Совет: ключевые принципы из §1 можно вынести в `CLAUDE.md` в корне проекта — Claude Code читает его автоматически как контекст.
+
+---
+
+## 6. Стартовый промпт для Claude Code (скопировать в первое сообщение)
+
+```
+Контекст в docs/HANDOFF.md и docs/BACKEND_SPEC_tariffs_scorecard_audit.md, UI-референс в ui/logistics-module.html.
+Я продолжаю модуль «Логистика». Бэкенд логистики уже в этом репозитории (modules/logistics / LOG-6).
+
+Соблюдай принципы проекта: AI = Итерация 1 (ghost-плейсхолдеры, insight пустой на бэке), человек всегда на карточке, gross-profit framing, дизайн-система (Golos Text, сетка 236/1fr/320, канбан + правый рейл).
+
+Задача на сейчас:
+1) Реализуй на бэке таблицы zones и carrier_tariffs по BACKEND_SPEC + хелпер quote_tariff() и эндпоинт POST /shipments/{id}/quote.
+2) Сгенерируй Alembic-миграцию (у новых колонок server_default) и применяй upgrade head.
+3) Покажи план реализации React-модуля по ui/logistics-module.html (6 вкладок) — начнём с вкладки «Доставка РБ/РФ».
+
+Сначала прочитай HANDOFF и BACKEND_SPEC, затем предложи план, потом приступай.
+```
