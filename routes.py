@@ -19,7 +19,10 @@ from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
 from modules.logistics import fleet, pricing, seeds
 from modules.logistics.models import (
     Carrier,
+    CarrierBid,
     CarrierCargoCapability,
+    CarrierRfq,
+    CarrierRfqInvite,
     CarrierScorecard,
     CarrierTariff,
     CarrierVehicle,
@@ -33,6 +36,11 @@ from modules.logistics.schemas import (
     AuditEntryCreate,
     AuditEntryOut,
     AuditReportOut,
+    AwardOut,
+    AwardRequest,
+    BidCreate,
+    BidOut,
+    BroadcastOut,
     CapabilityCreate,
     CapabilityOut,
     CarrierCatalogItem,
@@ -48,8 +56,12 @@ from modules.logistics.schemas import (
     ImportShipmentCreate,
     ImportShipmentOut,
     ImportStageUpdate,
+    InviteOut,
+    NegotiateRequest,
     QuoteOut,
     QuoteRequest,
+    RfqCreate,
+    RfqOut,
     ScorecardOut,
     ShipmentCreate,
     ShipmentOut,
@@ -59,7 +71,7 @@ from modules.logistics.schemas import (
     VehicleOut,
     ZoneOut,
 )
-from modules.logistics.stages import DELIVERY_STAGES, IMPORT_STAGES
+from modules.logistics.stages import DELIVERY_STAGES, IMPORT_STAGES, TENDER_STAGES
 
 router = APIRouter(tags=["logistics"])
 
@@ -732,6 +744,25 @@ async def eligible_carriers(
     допускам (категория, ADR, лимиты веса/габарита). Это таргет для рассылки
     тендера (Блок 4) и замена статичного флага «тяжёлый груз».
     """
+    matches = await _eligible_matches(
+        session, weight_kg=weight_kg, category=category,
+        needs_temp=needs_temp, max_dim_cm=max_dim_cm, adr=adr,
+    )
+    result = [
+        EligibleCarrierOut(
+            carrier_code=code, carrier=_carrier_name(code),
+            vehicle_class=m["vehicle_class"], capacity_kg=m["capacity_kg"],
+        )
+        for code, m in matches
+    ]
+    return sorted(result, key=lambda e: e.capacity_kg)
+
+
+async def _eligible_matches(
+    session: AsyncSession, *, weight_kg: float, category: str = "",
+    needs_temp: bool = False, max_dim_cm: int = 0, adr: bool = False,
+) -> list[tuple[str, dict]]:
+    """Пригодные перевозчики под груз: ``[(carrier_code, {vehicle_class, capacity_kg})]``."""
     vehicles = (await session.execute(select(CarrierVehicle))).scalars().all()
     caps = (await session.execute(select(CarrierCargoCapability))).scalars().all()
     by_carrier: dict[str, dict] = {}
@@ -739,17 +770,285 @@ async def eligible_carriers(
         by_carrier.setdefault(v.carrier_code, {"vehicles": [], "caps": []})["vehicles"].append(v)
     for c in caps:
         by_carrier.setdefault(c.carrier_code, {"vehicles": [], "caps": []})["caps"].append(c)
-
-    result: list[EligibleCarrierOut] = []
+    out: list[tuple[str, dict]] = []
     for code, data in by_carrier.items():
-        match = fleet.carrier_eligible(
+        m = fleet.carrier_eligible(
             data["vehicles"], data["caps"],
             weight_kg=weight_kg, category=category,
             needs_temp=needs_temp, max_dim_cm=max_dim_cm, adr=adr,
         )
-        if match is not None:
-            result.append(EligibleCarrierOut(
-                carrier_code=code, carrier=_carrier_name(code),
-                vehicle_class=match["vehicle_class"], capacity_kg=match["capacity_kg"],
-            ))
-    return sorted(result, key=lambda e: e.capacity_kg)
+        if m is not None:
+            out.append((code, m))
+    return out
+
+
+# --- Тендер на перевозку: RFQ / рассылка / предложения / договор (Блок 4) -------
+def _bids_with_best(bids: list[CarrierBid]) -> list[BidOut]:
+    """Предложения, отсортированные по цене, с пометкой лучшего (минимальная цена)."""
+    ordered = sorted(bids, key=lambda b: float(b.price))
+    best_id = ordered[0].id if ordered else None
+    return [
+        BidOut(
+            **{k: getattr(b, k) for k in (
+                "id", "rfq_id", "carrier_code", "eta_days", "vehicle_class",
+                "valid_until", "comment", "round")},
+            price=float(b.price), carrier=_carrier_name(b.carrier_code), is_best=(b.id == best_id),
+        )
+        for b in ordered
+    ]
+
+
+async def _get_rfq(session: AsyncSession, rfq_id: int) -> CarrierRfq:
+    rfq = await session.get(CarrierRfq, rfq_id)
+    if rfq is None:
+        raise HTTPException(status_code=404, detail="Тендер не найден")
+    return rfq
+
+
+def _rfq_card(r: CarrierRfq) -> FunnelCard:
+    tags = [t for t in (r.cargo, f"{float(r.weight_kg):g} кг" if r.weight_kg else "", r.category) if t]
+    return FunnelCard(
+        id=r.id, code=r.number or f"ТНД-{r.id}", title=r.route_to or r.cargo or "Тендер",
+        subtitle=_route(r.route_from, r.route_to), amount=float(r.awarded_price or 0),
+        owner=r.created_by, date=r.deadline or "", next_step=r.office_doc_ref, tags=tags,
+    )
+
+
+@router.get("/rfqs", response_model=list[RfqOut])
+async def list_rfqs(session: AsyncSession = Depends(get_session)):
+    """Тендеры на перевозку (плоский список)."""
+    return (await session.execute(select(CarrierRfq).order_by(CarrierRfq.id.desc()))).scalars().all()
+
+
+@router.get("/rfqs/board", response_model=FunnelBoardOut)
+async def rfqs_board(session: AsyncSession = Depends(get_session)) -> FunnelBoardOut:
+    """Воронка тендеров: черновик → разослан → сбор → переговоры → выбран → договор."""
+    rows = (await session.execute(select(CarrierRfq))).scalars().all()
+    return build_board(TENDER_STAGES, rows, _rfq_card, stage_of=lambda r: r.status)
+
+
+@router.post("/rfqs", response_model=RfqOut, status_code=201)
+async def create_rfq(payload: RfqCreate, session: AsyncSession = Depends(get_session)):
+    """Создать тендер на перевозку (наёмный перевозчик по договору)."""
+    data = payload.model_dump()
+    data["weight_kg"] = Decimal(str(data["weight_kg"]))
+    data["declared_value"] = Decimal(str(data["declared_value"]))
+    obj = CarrierRfq(**data)
+    session.add(obj)
+    await session.flush()
+    if not obj.number:
+        obj.number = f"ТНД-2026-{obj.id:04d}"
+    await session.commit()
+    await session.refresh(obj)
+    return obj
+
+
+@router.get("/rfqs/{rfq_id}", response_model=RfqOut)
+async def get_rfq(rfq_id: int, session: AsyncSession = Depends(get_session)):
+    """Тендер по id."""
+    return await _get_rfq(session, rfq_id)
+
+
+@router.post("/rfqs/{rfq_id}/broadcast", response_model=BroadcastOut)
+async def broadcast_rfq(
+    rfq_id: int,
+    core: Core = Depends(get_core),
+    session: AsyncSession = Depends(get_session),
+):
+    """Разослать тендер пригодным перевозчикам (по параметрам груза → ``fleet``).
+
+    Создаёт приглашения по перевозчикам, чьи парк и допуски подходят под груз.
+    Реальная email/API-рассылка — Итерация 1; здесь — фиксация приглашений.
+    """
+    rfq = await _get_rfq(session, rfq_id)
+    matches = await _eligible_matches(
+        session, weight_kg=float(rfq.weight_kg or 0), category=rfq.category,
+        needs_temp=rfq.needs_temp, max_dim_cm=rfq.max_dim_cm, adr=rfq.adr,
+    )
+    invited = {
+        i.carrier_code
+        for i in (
+            await session.execute(select(CarrierRfqInvite).where(CarrierRfqInvite.rfq_id == rfq_id))
+        ).scalars().all()
+    }
+    carriers: list[str] = []
+    for code, _m in matches:
+        carriers.append(code)
+        if code not in invited:
+            session.add(CarrierRfqInvite(rfq_id=rfq_id, carrier_code=code))
+    rfq.status = "sent"
+    core.event_bus.emit(
+        session, "logistics.rfq.broadcast",
+        {"rfq_id": rfq_id, "number": rfq.number, "carriers": carriers, "entity_ref": rfq.number},
+    )
+    await session.commit()
+    return BroadcastOut(rfq_id=rfq_id, status=rfq.status, invited=len(carriers), carriers=carriers)
+
+
+@router.get("/rfqs/{rfq_id}/invites", response_model=list[InviteOut])
+async def list_invites(rfq_id: int, session: AsyncSession = Depends(get_session)):
+    """Кому разослан тендер."""
+    return (
+        await session.execute(select(CarrierRfqInvite).where(CarrierRfqInvite.rfq_id == rfq_id))
+    ).scalars().all()
+
+
+@router.post("/rfqs/{rfq_id}/bids", response_model=BidOut, status_code=201)
+async def add_bid(rfq_id: int, payload: BidCreate, session: AsyncSession = Depends(get_session)):
+    """Зарегистрировать предложение перевозчика (ручной ввод; реальная — Итерация 1)."""
+    rfq = await _get_rfq(session, rfq_id)
+    obj = CarrierBid(
+        rfq_id=rfq_id, carrier_code=payload.carrier_code, price=Decimal(str(payload.price)),
+        eta_days=payload.eta_days, vehicle_class=payload.vehicle_class,
+        valid_until=payload.valid_until, comment=payload.comment, round=1,
+    )
+    session.add(obj)
+    if rfq.status in ("draft", "sent"):
+        rfq.status = "collecting"
+    # отметить приглашение откликнувшимся
+    inv = (
+        await session.execute(
+            select(CarrierRfqInvite).where(
+                CarrierRfqInvite.rfq_id == rfq_id,
+                CarrierRfqInvite.carrier_code == payload.carrier_code,
+            )
+        )
+    ).scalars().first()
+    if inv is not None:
+        inv.status = "responded"
+    await session.commit()
+    await session.refresh(obj)
+    return BidOut(
+        id=obj.id, rfq_id=obj.rfq_id, carrier_code=obj.carrier_code,
+        carrier=_carrier_name(obj.carrier_code), price=float(obj.price), eta_days=obj.eta_days,
+        vehicle_class=obj.vehicle_class, valid_until=obj.valid_until, comment=obj.comment,
+        round=obj.round, is_best=False,
+    )
+
+
+@router.get("/rfqs/{rfq_id}/bids", response_model=list[BidOut])
+async def list_bids(rfq_id: int, session: AsyncSession = Depends(get_session)):
+    """Предложения по тендеру: сортировка по цене, пометка лучшего."""
+    await _get_rfq(session, rfq_id)
+    bids = (
+        await session.execute(select(CarrierBid).where(CarrierBid.rfq_id == rfq_id))
+    ).scalars().all()
+    return _bids_with_best(bids)
+
+
+@router.post("/rfqs/{rfq_id}/negotiate", response_model=BidOut, status_code=201)
+async def negotiate_rfq(rfq_id: int, payload: NegotiateRequest, session: AsyncSession = Depends(get_session)):
+    """Раунд переговоров: новая (сниженная) цена перевозчика → предложение след. раунда."""
+    rfq = await _get_rfq(session, rfq_id)
+    prev = (
+        await session.execute(
+            select(CarrierBid).where(
+                CarrierBid.rfq_id == rfq_id, CarrierBid.carrier_code == payload.carrier_code
+            )
+        )
+    ).scalars().all()
+    if not prev:
+        raise HTTPException(status_code=404, detail="Нет предложения этого перевозчика для торга")
+    base = max(prev, key=lambda b: b.round)
+    obj = CarrierBid(
+        rfq_id=rfq_id, carrier_code=payload.carrier_code, price=Decimal(str(payload.new_price)),
+        eta_days=base.eta_days, vehicle_class=base.vehicle_class, valid_until=base.valid_until,
+        comment=payload.comment, round=base.round + 1,
+    )
+    session.add(obj)
+    rfq.status = "negotiation"
+    await session.commit()
+    await session.refresh(obj)
+    return BidOut(
+        id=obj.id, rfq_id=obj.rfq_id, carrier_code=obj.carrier_code,
+        carrier=_carrier_name(obj.carrier_code), price=float(obj.price), eta_days=obj.eta_days,
+        vehicle_class=obj.vehicle_class, valid_until=obj.valid_until, comment=obj.comment,
+        round=obj.round, is_best=False,
+    )
+
+
+@router.post("/rfqs/{rfq_id}/award", response_model=AwardOut)
+async def award_rfq(
+    rfq_id: int,
+    payload: AwardRequest,
+    core: Core = Depends(get_core),
+    session: AsyncSession = Depends(get_session),
+):
+    """Выбрать перевозчика и заключить договор: создаётся отгрузка, тендер закрыт.
+
+    Без ``carrier_code`` выбирается предложение с минимальной ценой. Создаётся
+    ``Shipment`` (``assigned``) с выбранным перевозчиком и ценой; тендер переходит
+    в ``contracted``; публикуется ``logistics.contract.signed``.
+    """
+    rfq = await _get_rfq(session, rfq_id)
+    bids = (
+        await session.execute(select(CarrierBid).where(CarrierBid.rfq_id == rfq_id))
+    ).scalars().all()
+    if payload.carrier_code:
+        bids = [b for b in bids if b.carrier_code == payload.carrier_code]
+    if not bids:
+        raise HTTPException(status_code=404, detail="Нет предложений для выбора")
+    chosen = min(bids, key=lambda b: float(b.price))
+
+    ship = Shipment(
+        customer=rfq.office_doc_ref or rfq.number or f"Тендер {rfq_id}",
+        cargo=rfq.cargo, weight_kg=rfq.weight_kg or Decimal("0"),
+        route_from=rfq.route_from, route_to=rfq.route_to,
+        carrier=_carrier_name(chosen.carrier_code), carrier_code=chosen.carrier_code,
+        amount=chosen.price, deal_id=rfq.deal_id, status="assigned",
+        tracking_status="Договор заключён, ожидаем забор",
+    )
+    session.add(ship)
+    await session.flush()
+    if not ship.number:
+        ship.number = f"ЛОГ-2026-{ship.id:04d}"
+
+    rfq.status = "contracted"
+    rfq.awarded_carrier_code = chosen.carrier_code
+    rfq.awarded_price = chosen.price
+    rfq.shipment_id = ship.id
+
+    core.event_bus.emit(
+        session, "logistics.contract.signed",
+        {
+            "rfq_id": rfq_id, "rfq_number": rfq.number, "carrier": ship.carrier,
+            "carrier_code": chosen.carrier_code, "price": float(chosen.price),
+            "shipment_id": ship.id, "shipment_number": ship.number,
+            "office_doc_ref": rfq.office_doc_ref, "entity_ref": ship.number,
+        },
+    )
+    await session.commit()
+    await session.refresh(ship)
+    return AwardOut(
+        rfq_id=rfq_id, status=rfq.status, carrier_code=chosen.carrier_code,
+        carrier=ship.carrier, price=float(chosen.price),
+        shipment_id=ship.id, shipment_number=ship.number,
+    )
+
+
+@router.post("/rfqs/seed", response_model=RfqOut)
+async def seed_rfq(session: AsyncSession = Depends(get_session)):
+    """Демо-тендер на перевозку с приглашениями и предложениями (идемпотентно по номеру)."""
+    existing = (
+        await session.execute(
+            select(CarrierRfq).where(CarrierRfq.number == seeds.RFQ_DEMO["number"])
+        )
+    ).scalars().first()
+    if existing is not None:
+        return existing
+    data = dict(seeds.RFQ_DEMO)
+    data["weight_kg"] = Decimal(str(data["weight_kg"]))
+    data["declared_value"] = Decimal(str(data["declared_value"]))
+    rfq = CarrierRfq(**data)
+    session.add(rfq)
+    await session.flush()
+    for code in seeds.RFQ_DEMO_INVITES:
+        session.add(CarrierRfqInvite(rfq_id=rfq.id, carrier_code=code, status="responded"))
+    for bid in seeds.RFQ_DEMO_BIDS:
+        session.add(CarrierBid(
+            rfq_id=rfq.id, carrier_code=bid["carrier_code"], price=Decimal(str(bid["price"])),
+            eta_days=bid["eta_days"], vehicle_class=bid["vehicle_class"], comment=bid["comment"],
+        ))
+    await session.commit()
+    await session.refresh(rfq)
+    return rfq

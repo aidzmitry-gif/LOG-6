@@ -379,6 +379,125 @@ class EligibleCarrierOut(BaseModel):
     capacity_kg: float
 
 
+# --- Тендер на перевозку: RFQ / приглашения / предложения (Блок 4) ------------
+class RfqCreate(BaseModel):
+    """Создать тендер на перевозку (наёмный перевозчик по договору)."""
+
+    cargo: str = ""
+    weight_kg: float = 0
+    max_dim_cm: int = 0
+    category: str = ""              # обычный/АКБ/опасный_ADR/хрупкое/негабарит/температурный
+    needs_temp: bool = False
+    adr: bool = False
+    route_from: str = ""
+    route_to: str = ""
+    zone_code: str = ""
+    pickup_date: str = ""
+    declared_value: float = 0
+    office_doc_ref: str = ""        # связь с заявкой офиса (Блок 3)
+    deal_id: int | None = None
+    created_by: str = ""
+    deadline: str = ""
+
+
+class RfqOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    number: str = ""
+    cargo: str = ""
+    weight_kg: float = 0
+    max_dim_cm: int = 0
+    category: str = ""
+    needs_temp: bool = False
+    adr: bool = False
+    route_from: str = ""
+    route_to: str = ""
+    zone_code: str = ""
+    pickup_date: str = ""
+    declared_value: float = 0
+    status: str
+    office_doc_ref: str = ""
+    deal_id: int | None = None
+    created_by: str = ""
+    deadline: str = ""
+    awarded_carrier_code: str = ""
+    awarded_price: float = 0
+    shipment_id: int | None = None
+
+
+class InviteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    rfq_id: int
+    carrier_code: str
+    channel: str = "manual"
+    status: str = "sent"
+
+
+class BroadcastOut(BaseModel):
+    """Итог рассылки тендера: сколько перевозчиков приглашено и кто."""
+
+    rfq_id: int
+    status: str
+    invited: int
+    carriers: list[str]
+
+
+class BidCreate(BaseModel):
+    """Зарегистрировать предложение перевозчика (ручной ввод; реальная — Итерация 1)."""
+
+    carrier_code: str
+    price: float
+    eta_days: int = 0
+    vehicle_class: str = ""
+    valid_until: str = ""
+    comment: str = ""
+
+
+class BidOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    rfq_id: int
+    carrier_code: str
+    carrier: str = ""
+    price: float
+    eta_days: int = 0
+    vehicle_class: str = ""
+    valid_until: str = ""
+    comment: str = ""
+    round: int = 1
+    is_best: bool = False           # вычисляется при выдаче (минимальная цена)
+
+
+class NegotiateRequest(BaseModel):
+    """Раунд переговоров: новая (сниженная) цена перевозчика."""
+
+    carrier_code: str
+    new_price: float
+    comment: str = ""
+
+
+class AwardRequest(BaseModel):
+    """Выбрать перевозчика и заключить договор. Без ``carrier_code`` — лучший по цене."""
+
+    carrier_code: str = ""
+
+
+class AwardOut(BaseModel):
+    """Итог заключения тендера: выбранный перевозчик, цена, созданная отгрузка."""
+
+    rfq_id: int
+    status: str
+    carrier_code: str
+    carrier: str
+    price: float
+    shipment_id: int
+    shipment_number: str
+
+
 # --- Справочник перевозчиков РБ (сиды + каталог, log-5) -----------------------
 # Способ интеграции в прототипе: manual/csv. Реальные API — Итерация 1+.
 # track_url — шаблон ссылки трекинга ({n} = трек-номер), уточняется при подключении.

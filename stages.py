@@ -18,6 +18,17 @@ DELIVERY_STAGES: list[dict] = [
     {"id": "delivered", "title": "Доставлено", "color": "#22C55E"},
 ]
 
+# Тендер на перевозку (Блок 4): черновик → разослан → сбор предложений →
+# переговоры → выбран перевозчик → договор. Наёмный перевозчик по договору.
+TENDER_STAGES: list[dict] = [
+    {"id": "draft", "title": "Черновик", "color": "#94A3B8"},
+    {"id": "sent", "title": "Разослан", "color": "#3B82F6"},
+    {"id": "collecting", "title": "Сбор предложений", "color": "#8B5CF6"},
+    {"id": "negotiation", "title": "Переговоры", "color": "#F59E0B"},
+    {"id": "awarded", "title": "Выбран перевозчик", "color": "#14B8A6"},
+    {"id": "contracted", "title": "Договор заключён", "color": "#22C55E"},
+]
+
 # Импорт из Китая (log-2, log-4): фабрика → консолидация → плечо → таможня → склад.
 IMPORT_STAGES: list[dict] = [
     {"id": "factory", "title": "Фабрика", "color": "#3B82F6"},

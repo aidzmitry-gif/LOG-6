@@ -259,3 +259,85 @@ class CarrierCargoCapability(Base):
     max_weight_kg: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), server_default="0")  # 0 = без лимита
     max_dim_cm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")            # макс. габарит, 0 = без лимита
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class CarrierRfq(Base):
+    """Тендер на перевозку (наёмный перевозчик по договору): запрос предложений.
+
+    Процесс (ТЗ): рассылка пригодным перевозчикам с параметрами груза → сбор
+    предложений (``CarrierBid``) → переговоры о снижении → выбор и заключение
+    договора → создаётся ``Shipment``. ``status`` ведёт тендер по воронке
+    (см. ``TENDER_STAGES``). Параметры груза питают подбор пригодных (``fleet``).
+    Реальная email/API-рассылка и ИИ-переговоры — Итерация 1.
+    """
+
+    __tablename__ = "carrier_rfq"
+    __table_args__ = {"schema": "logistics"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(64), default="", server_default="")  # ТНД-2026-NNNN
+    cargo: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    weight_kg: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"), server_default="0")
+    max_dim_cm: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    category: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    needs_temp: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    adr: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    route_from: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    route_to: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    zone_code: Mapped[str] = mapped_column(String(8), default="", server_default="")
+    pickup_date: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    declared_value: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), server_default="0")
+    status: Mapped[str] = mapped_column(String(24), default="draft", server_default="draft")
+    office_doc_ref: Mapped[str] = mapped_column(String(64), default="", server_default="")  # ← заявка из office
+    deal_id: Mapped[int | None] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(String(128), default="", server_default="")
+    deadline: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    awarded_carrier_code: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    awarded_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), server_default="0")
+    shipment_id: Mapped[int | None] = mapped_column(Integer)  # созданная отгрузка после заключения
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class CarrierRfqInvite(Base):
+    """Приглашение перевозчика в тендер (кого включили в рассылку).
+
+    Создаётся при ``broadcast`` по списку пригодных перевозчиков (``fleet``).
+    ``channel`` — способ (manual/email/api; реальная рассылка — Итерация 1),
+    ``status`` — состояние отклика (sent/viewed/responded/declined).
+    """
+
+    __tablename__ = "carrier_rfq_invite"
+    __table_args__ = (
+        UniqueConstraint("rfq_id", "carrier_code", name="uq_rfq_invite"),
+        {"schema": "logistics"},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rfq_id: Mapped[int] = mapped_column(Integer)
+    carrier_code: Mapped[str] = mapped_column(String(32))
+    channel: Mapped[str] = mapped_column(String(16), default="manual", server_default="manual")
+    status: Mapped[str] = mapped_column(String(16), default="sent", server_default="sent")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class CarrierBid(Base):
+    """Предложение перевозчика в тендере: цена, срок, машина, раунд переговоров.
+
+    ``round`` = 1 — первичное предложение; 2+ — после раунда переговоров о снижении
+    (новая, более низкая цена). Данные предложений копятся для бенчмарка цены и
+    автотаргета будущих рассылок (постоянное улучшение стоимости, ТЗ).
+    """
+
+    __tablename__ = "carrier_bid"
+    __table_args__ = {"schema": "logistics"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    rfq_id: Mapped[int] = mapped_column(Integer)
+    carrier_code: Mapped[str] = mapped_column(String(32))
+    price: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"), server_default="0")
+    eta_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    vehicle_class: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    valid_until: Mapped[str] = mapped_column(String(32), default="", server_default="")
+    comment: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    round: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

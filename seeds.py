@@ -156,3 +156,17 @@ CAPABILITIES_SEED: list[dict] = [
      "max_weight_kg": mw, "max_dim_cm": md}
     for c, cat, adr, ov, mw, md in _CAPABILITIES_RAW
 ]
+
+# --- Демо-тендер на перевозку (Блок 4) -------------------------------------- #
+RFQ_DEMO: dict = {
+    "number": "ТНД-2026-9001", "cargo": "АКБ LiFePO4 280Ач · 16 шт", "weight_kg": 900,
+    "category": "АКБ", "route_from": "Минск", "route_to": "Гомель", "zone_code": "z2",
+    "pickup_date": "2026-06-14", "declared_value": 48500, "office_doc_ref": "ДОК-2026-0001",
+    "created_by": "Ольга Кравцова", "deadline": "2026-06-13", "status": "collecting",
+}
+RFQ_DEMO_INVITES: list[str] = ["autolight", "cdek", "own"]
+RFQ_DEMO_BIDS: list[dict] = [
+    {"carrier_code": "own", "price": 600, "eta_days": 1, "vehicle_class": "Тент 5т", "comment": "Свой транспорт, день в день"},
+    {"carrier_code": "autolight", "price": 680, "eta_days": 2, "vehicle_class": "Тент 5т", "comment": "Первичное предложение"},
+    {"carrier_code": "cdek", "price": 740, "eta_days": 1, "vehicle_class": "Фургон 3.5т", "comment": "Первичное предложение"},
+]
