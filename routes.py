@@ -16,24 +16,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.runtime.core import Core
 from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
-from modules.logistics.models import Carrier, ImportShipment, Shipment
+from modules.logistics import pricing, seeds
+from modules.logistics.models import (
+    Carrier,
+    CarrierScorecard,
+    CarrierTariff,
+    FreightAuditLog,
+    ImportShipment,
+    Shipment,
+    Zone,
+)
 from modules.logistics.schemas import (
     CARRIERS_RB,
+    AuditEntryCreate,
+    AuditEntryOut,
+    AuditReportOut,
     CarrierCatalogItem,
     CarrierCostStat,
     CarrierCreate,
     CarrierOrderRequest,
     CarrierOut,
     CarrierStat,
+    CarrierTariffOut,
     CostReportOut,
     DashboardOut,
     ImportShipmentCreate,
     ImportShipmentOut,
     ImportStageUpdate,
+    QuoteOut,
+    QuoteRequest,
+    ScorecardOut,
     ShipmentCreate,
     ShipmentOut,
     StatusUpdate,
     TrackingUpdate,
+    ZoneOut,
 )
 from modules.logistics.stages import DELIVERY_STAGES, IMPORT_STAGES
 
@@ -420,4 +437,207 @@ async def costs_report(session: AsyncSession = Depends(get_session)) -> CostRepo
         client=float(client),
         import_cost=float(import_cost),
         by_carrier=_company_cost_by_carrier(shipments),
+    )
+
+
+# --- Тарифы и зоны (BACKEND_SPEC §1-2) -----------------------------------------
+_CARRIER_NAME = {c["code"]: c["name"] for c in CARRIERS_RB}
+
+
+@router.post("/zones/seed", response_model=list[ZoneOut])
+async def seed_zones(session: AsyncSession = Depends(get_session)):
+    """Заполнить зоны доставки по РБ (идемпотентно — по ``code``)."""
+    existing = {z.code for z in (await session.execute(select(Zone))).scalars().all()}
+    for item in seeds.ZONES_SEED:
+        if item["code"] not in existing:
+            session.add(Zone(**item))
+    await session.commit()
+    return (await session.execute(select(Zone).order_by(Zone.code))).scalars().all()
+
+
+@router.get("/zones", response_model=list[ZoneOut])
+async def list_zones(session: AsyncSession = Depends(get_session)):
+    """Список зон доставки по РБ."""
+    return (await session.execute(select(Zone).order_by(Zone.code))).scalars().all()
+
+
+@router.post("/carrier-tariffs/seed", response_model=list[CarrierTariffOut])
+async def seed_carrier_tariffs(session: AsyncSession = Depends(get_session)):
+    """Заполнить прайс-матрицу перевозчик×зона (идемпотентно по carrier+zone+effective_from)."""
+    existing = {
+        (t.carrier_code, t.zone_code, t.effective_from)
+        for t in (await session.execute(select(CarrierTariff))).scalars().all()
+    }
+    for item in seeds.TARIFFS_SEED:
+        key = (item["carrier_code"], item["zone_code"], item["effective_from"])
+        if key not in existing:
+            session.add(CarrierTariff(**item))
+    await session.commit()
+    return (
+        await session.execute(
+            select(CarrierTariff).order_by(CarrierTariff.carrier_code, CarrierTariff.zone_code)
+        )
+    ).scalars().all()
+
+
+@router.get("/carrier-tariffs", response_model=list[CarrierTariffOut])
+async def list_carrier_tariffs(zone: str = "", session: AsyncSession = Depends(get_session)):
+    """Тарифы (опц. фильтр по зоне ``?zone=z2``)."""
+    q = select(CarrierTariff).order_by(CarrierTariff.carrier_code, CarrierTariff.zone_code)
+    if zone:
+        q = q.where(CarrierTariff.zone_code == zone)
+    return (await session.execute(q)).scalars().all()
+
+
+@router.post("/shipments/{shipment_id}/quote", response_model=list[QuoteOut])
+async def quote_shipment(
+    shipment_id: int,
+    payload: QuoteRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Котировки доставки по всем перевозчикам зоны — расчёт из справочника тарифов.
+
+    Заменяет статичные числа в модалке «Оформление доставки» расчётом ``quote_tariff``
+    (вилки веса, забор, наложка, страховка). Сортировка — по итоговой стоимости.
+    """
+    obj = await session.get(Shipment, shipment_id)
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Отгрузка не найдена")
+    weight = payload.weight_kg if payload.weight_kg is not None else float(obj.weight_kg or 0)
+
+    zone = (
+        await session.execute(select(Zone).where(Zone.code == payload.zone_code))
+    ).scalars().first()
+    if zone is None:
+        raise HTTPException(status_code=422, detail="Неизвестная зона")
+
+    tariffs = (
+        await session.execute(
+            select(CarrierTariff).where(CarrierTariff.zone_code == payload.zone_code)
+        )
+    ).scalars().all()
+    if not tariffs:
+        raise HTTPException(status_code=404, detail="Нет тарифов для зоны (запустите сид)")
+
+    quotes: list[QuoteOut] = []
+    for t in tariffs:
+        breakdown = pricing.quote_tariff(
+            t, weight, pickup=payload.pickup,
+            cod_amount=payload.cod_amount, declared_value=payload.declared_value,
+        )
+        quotes.append(QuoteOut(
+            carrier_code=t.carrier_code,
+            carrier=_CARRIER_NAME.get(t.carrier_code, t.carrier_code),
+            zone_code=t.zone_code, weight_kg=weight,
+            sla_days_min=zone.sla_days_min, sla_days_max=zone.sla_days_max,
+            **breakdown,
+        ))
+    return sorted(quotes, key=lambda q: q.total)
+
+
+# --- Scorecard перевозчиков (BACKEND_SPEC §3) ----------------------------------
+@router.post("/carriers/scorecard/seed", response_model=list[ScorecardOut])
+async def seed_scorecard(session: AsyncSession = Depends(get_session)):
+    """Заполнить scorecard перевозчиков за период (идемпотентно по carrier+period)."""
+    existing = {
+        (s.carrier_code, s.period)
+        for s in (await session.execute(select(CarrierScorecard))).scalars().all()
+    }
+    for item in seeds.SCORECARD_SEED:
+        if (item["carrier_code"], item["period"]) not in existing:
+            session.add(CarrierScorecard(**item))
+    await session.commit()
+    return (
+        await session.execute(select(CarrierScorecard).order_by(CarrierScorecard.score.desc()))
+    ).scalars().all()
+
+
+@router.get("/carriers/scorecard", response_model=list[ScorecardOut])
+async def carriers_scorecard(period: str = "", session: AsyncSession = Depends(get_session)):
+    """Scorecard перевозчиков (опц. фильтр ``?period=2026-06``), сорт. по баллу."""
+    q = select(CarrierScorecard).order_by(CarrierScorecard.score.desc())
+    if period:
+        q = q.where(CarrierScorecard.period == period)
+    return (await session.execute(q)).scalars().all()
+
+
+# --- Аудит счетов перевозчиков (BACKEND_SPEC §4) -------------------------------
+async def _expected_for(session: AsyncSession, zone_code: str, weight_kg: float, carrier_code: str):
+    """Ожидаемая стоимость по тарифу (для сверки счёта). None, если тарифа нет."""
+    t = (
+        await session.execute(
+            select(CarrierTariff).where(
+                CarrierTariff.carrier_code == carrier_code,
+                CarrierTariff.zone_code == zone_code,
+            )
+        )
+    ).scalars().first()
+    if t is None:
+        return None
+    return pricing.quote_tariff(t, weight_kg)["total"]
+
+
+@router.post("/costs/audit/seed", response_model=list[AuditEntryOut])
+async def seed_audit(session: AsyncSession = Depends(get_session)):
+    """Заполнить демо-расхождения аудита счетов (идемпотентно по shipment_code)."""
+    existing = {
+        a.shipment_code for a in (await session.execute(select(FreightAuditLog))).scalars().all()
+    }
+    for item in seeds.AUDIT_SEED:
+        if item["shipment_code"] not in existing:
+            session.add(FreightAuditLog(**item))
+    await session.commit()
+    return (
+        await session.execute(select(FreightAuditLog).order_by(FreightAuditLog.id.desc()))
+    ).scalars().all()
+
+
+@router.post("/costs/audit", response_model=AuditEntryOut, status_code=201)
+async def create_audit_entry(payload: AuditEntryCreate, session: AsyncSession = Depends(get_session)):
+    """Зарегистрировать счёт перевозчика и сверить с ожидаемым тарифом.
+
+    Если ``expected_amount`` не задан — считается из ``carrier_tariffs`` по
+    ``zone_code``+``weight_kg``. ``variance = invoice - expected``; расхождение
+    создаёт запись к разбору.
+    """
+    expected = payload.expected_amount
+    if expected is None:
+        expected = await _expected_for(
+            session, payload.zone_code, payload.weight_kg, payload.carrier_code
+        )
+        if expected is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Не задан expected_amount и нет тарифа для зоны/перевозчика",
+            )
+    variance = round(payload.invoice_amount - expected, 2)
+    obj = FreightAuditLog(
+        shipment_code=payload.shipment_code,
+        carrier_code=payload.carrier_code,
+        invoice_amount=Decimal(str(payload.invoice_amount)),
+        expected_amount=Decimal(str(expected)),
+        variance=Decimal(str(variance)),
+        reason=payload.reason,
+        status="open" if variance != 0 else "closed",
+    )
+    session.add(obj)
+    await session.commit()
+    await session.refresh(obj)
+    return obj
+
+
+@router.get("/costs/audit", response_model=AuditReportOut)
+async def costs_audit(period: str = "", session: AsyncSession = Depends(get_session)) -> AuditReportOut:
+    """Сводка аудита счетов: проверено, расхождений, сумма к возврату, позиции."""
+    rows = (
+        await session.execute(select(FreightAuditLog).order_by(FreightAuditLog.id.desc()))
+    ).scalars().all()
+    discrepancies = [r for r in rows if r.variance and float(r.variance) != 0]
+    to_recover = sum(float(r.variance) for r in discrepancies if float(r.variance) > 0)
+    return AuditReportOut(
+        period=period or seeds.SCORECARD_PERIOD,
+        checked=len(rows),
+        discrepancies=len(discrepancies),
+        to_recover=round(to_recover, 2),
+        items=[AuditEntryOut.model_validate(r) for r in rows],
     )

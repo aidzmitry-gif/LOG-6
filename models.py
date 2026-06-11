@@ -1,10 +1,20 @@
 """ORM-модели модуля Logistics (схема ``logistics.*``)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, func
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db.base import Base
@@ -104,4 +114,103 @@ class Carrier(Base):
     avg_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     shipments_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Zone(Base):
+    """Зона доставки по РБ (``z1``..``z4``): покрытие, города, SLA по срокам.
+
+    Зоны — ось прайс-матрицы (``CarrierTariff``): тариф задаётся на пару
+    перевозчик×зона. ``cities`` — JSON-список городов зоны (для подсказки
+    направления в модалке оформления доставки).
+    """
+
+    __tablename__ = "zones"
+    __table_args__ = {"schema": "logistics"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(8), unique=True)          # "z1".."z4"
+    name: Mapped[str] = mapped_column(String(128))
+    coverage: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    cities: Mapped[list] = mapped_column(JSON, default=list, server_default="[]")
+    sla_days_min: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    sla_days_max: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+
+
+class CarrierTariff(Base):
+    """Прайс-матрица перевозчик×зона: вилки веса (≤5/≤10/≤30 кг) + ставка свыше 30.
+
+    Плюс сборы: забор (``pickup_fee``), наложенный платёж (``cod_pct``, % суммы),
+    страховка (``insurance_pct``, % объявленной ценности). Расчёт итоговой
+    стоимости — ``pricing.quote_tariff``. ``effective_from`` даёт версионность
+    тарифа (новый прайс = новая строка с более поздней датой).
+    """
+
+    __tablename__ = "carrier_tariffs"
+    __table_args__ = (
+        UniqueConstraint("carrier_code", "zone_code", "effective_from", name="uq_tariff"),
+        {"schema": "logistics"},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    carrier_code: Mapped[str] = mapped_column(String(32))             # dpd/autolight/cdek/evropochta/belpost
+    zone_code: Mapped[str] = mapped_column(String(8))                 # z1..z4
+    price_w5: Mapped[Decimal] = mapped_column(Numeric(10, 2))         # до 5 кг
+    price_w10: Mapped[Decimal] = mapped_column(Numeric(10, 2))        # до 10 кг
+    price_w30: Mapped[Decimal] = mapped_column(Numeric(10, 2))        # до 30 кг
+    over30_per_kg: Mapped[Decimal] = mapped_column(Numeric(10, 2))    # ставка за кг свыше 30
+    pickup_fee: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), server_default="0")
+    cod_pct: Mapped[Decimal] = mapped_column(Numeric(5, 3), default=Decimal("0"), server_default="0")
+    insurance_pct: Mapped[Decimal] = mapped_column(Numeric(5, 3), default=Decimal("0"), server_default="0")
+    effective_from: Mapped[date] = mapped_column(Date)
+
+
+class CarrierScorecard(Base):
+    """Оценка перевозчика за период: OTD/OTIF, брак, точность счетов, претензии, балл.
+
+    ``score`` (взвешенный балл) и ``grade`` (A/B/C) — вход для распределения
+    объёмов: A приоритетно, C на доработке. ``cost_per_delivery`` — средняя
+    стоимость доставки, метрика «постоянно улучшать стоимость» (ТЗ).
+    """
+
+    __tablename__ = "carrier_scorecard"
+    __table_args__ = (
+        UniqueConstraint("carrier_code", "period", name="uq_scorecard"),
+        {"schema": "logistics"},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    carrier_code: Mapped[str] = mapped_column(String(32))
+    period: Mapped[str] = mapped_column(String(16))                   # "2026-06"
+    otd_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), server_default="0")
+    otif_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), server_default="0")
+    damage_free_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), server_default="0")
+    billing_accuracy_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), server_default="0")
+    claims_ratio_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0"), server_default="0")
+    cost_per_delivery: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), server_default="0")
+    shipments: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    score: Mapped[Decimal] = mapped_column(Numeric(5, 1), default=Decimal("0"), server_default="0")
+    grade: Mapped[str] = mapped_column(String(2), default="C", server_default="C")
+
+
+class FreightAuditLog(Base):
+    """Аудит счёта перевозчика: фактический счёт vs ожидаемый тариф, расхождение.
+
+    При загрузке счёта ``invoice_amount`` сверяется с ``quote_tariff(...)``
+    (``expected_amount``); ``variance = invoice - expected``. Положительное
+    расхождение → запись к разбору (``status``: open/return/dispute/closed) и
+    минус в точность счетов перевозчика (scorecard ``billing_accuracy``).
+    """
+
+    __tablename__ = "freight_audit_log"
+    __table_args__ = {"schema": "logistics"}
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    shipment_code: Mapped[str] = mapped_column(String(64))            # "ЛОГ-2026-0031"
+    carrier_code: Mapped[str] = mapped_column(String(32))
+    invoice_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))   # фактический счёт
+    expected_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))  # тариф из carrier_tariffs
+    variance: Mapped[Decimal] = mapped_column(Numeric(10, 2))         # invoice - expected
+    reason: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    status: Mapped[str] = mapped_column(String(16), default="open", server_default="open")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

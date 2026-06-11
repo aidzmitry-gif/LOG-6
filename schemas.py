@@ -1,6 +1,8 @@
 """Pydantic-схемы модуля Logistics."""
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -216,6 +218,115 @@ class CostReportOut(BaseModel):
     client: float               # за счёт клиента, BYN
     import_cost: float          # себестоимость доставки импорта, BYN
     by_carrier: list[CarrierCostStat]
+
+
+# --- Тарифы и зоны (BACKEND_SPEC §1-2) ----------------------------------------
+class ZoneOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name: str
+    coverage: str = ""
+    cities: list[str] = []
+    sla_days_min: int = 1
+    sla_days_max: int = 2
+
+
+class CarrierTariffOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    carrier_code: str
+    zone_code: str
+    price_w5: float
+    price_w10: float
+    price_w30: float
+    over30_per_kg: float
+    pickup_fee: float = 0
+    cod_pct: float = 0
+    insurance_pct: float = 0
+    effective_from: date
+
+
+class QuoteRequest(BaseModel):
+    """Запрос котировки доставки: зона + вес (+ опц. забор/наложка/страховка)."""
+
+    zone_code: str
+    weight_kg: float | None = None      # если не задан — берётся вес из отгрузки
+    pickup: bool = False
+    cod_amount: float = 0.0             # сумма наложенного платежа, BYN
+    declared_value: float = 0.0        # объявленная ценность (для страховки), BYN
+
+
+class QuoteOut(BaseModel):
+    """Котировка одного перевозчика по зоне: разбивка + итог + срок."""
+
+    carrier_code: str
+    carrier: str = ""
+    zone_code: str
+    weight_kg: float
+    base: float
+    pickup: float
+    cod_fee: float
+    insurance_fee: float
+    total: float
+    sla_days_min: int = 0
+    sla_days_max: int = 0
+
+
+# --- Scorecard перевозчиков (BACKEND_SPEC §3) ---------------------------------
+class ScorecardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    carrier_code: str
+    period: str
+    otd_pct: float = 0
+    otif_pct: float = 0
+    damage_free_pct: float = 0
+    billing_accuracy_pct: float = 0
+    claims_ratio_pct: float = 0
+    cost_per_delivery: float = 0
+    shipments: int = 0
+    score: float = 0
+    grade: str = "C"
+
+
+# --- Аудит счетов перевозчиков (BACKEND_SPEC §4) ------------------------------
+class AuditEntryCreate(BaseModel):
+    """Зарегистрировать счёт перевозчика для сверки с ожидаемым тарифом."""
+
+    shipment_code: str
+    carrier_code: str
+    invoice_amount: float
+    expected_amount: float | None = None  # если не задан — считается из тарифа (zone_code+weight_kg)
+    zone_code: str = ""
+    weight_kg: float = 0
+    reason: str = ""
+
+
+class AuditEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    shipment_code: str
+    carrier_code: str
+    invoice_amount: float
+    expected_amount: float
+    variance: float
+    reason: str = ""
+    status: str = "open"
+
+
+class AuditReportOut(BaseModel):
+    """Сводка аудита счетов за период: проверено, расхождений, к возврату, позиции."""
+
+    period: str
+    checked: int
+    discrepancies: int
+    to_recover: float       # сумма положительных расхождений (переплата), BYN
+    items: list[AuditEntryOut]
 
 
 # --- Справочник перевозчиков РБ (сиды + каталог, log-5) -----------------------
