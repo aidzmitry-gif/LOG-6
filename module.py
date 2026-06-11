@@ -10,18 +10,20 @@ from __future__ import annotations
 from core.runtime.contract import ModuleContract, Widget
 from core.runtime.core import Core
 from modules.logistics import routes
-from modules.logistics.events import on_document_posted
+from modules.logistics.events import on_document_posted, on_office_delivery_requested
 
 
 class LogisticsModule(ModuleContract):
     name = "logistics"
-    version = "0.2.0"
+    version = "0.3.0"
     api_prefix = "/logistics"
 
     def register(self, core: Core) -> None:
         core.include_router(routes.router, prefix=self.api_prefix)
         # межмодульная связь: заказ из sales → отгрузка в logistics (§2.5)
         core.subscribe("sales.document.posted", on_document_posted)
+        # офис → логистика: заявка перевозчику (спот → отгрузка, договор → тендер)
+        core.subscribe("logistics.delivery.requested", on_office_delivery_requested)
         # виджеты панели владельца (AI Control Tower)
         core.register_widget(Widget("logistics", "Логистика", source="logistics.shipments"))
         core.register_widget(

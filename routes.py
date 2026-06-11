@@ -188,6 +188,13 @@ async def update_shipment(
             "logistics.shipment.delivered",
             {"deal_id": obj.deal_id, "customer": obj.customer, "entity_ref": f"shipment:{obj.id}"},
         )
+        # обратно в офис: документ закрывается по доставке (matched по logistics_ref = number)
+        core.event_bus.emit(
+            session,
+            "logistics.delivery.delivered",
+            {"log_ref": obj.number, "number": obj.number, "carrier_name": obj.carrier,
+             "delivered_at": obj.eta or "", "entity_ref": obj.number},
+        )
     await session.commit()
     await session.refresh(obj)
     return obj
@@ -254,9 +261,14 @@ async def create_carrier_order(
 async def update_tracking(
     shipment_id: int,
     payload: TrackingUpdate,
+    core: Core = Depends(get_core),
     session: AsyncSession = Depends(get_session),
 ):
-    """Обновить статус трекинга от перевозчика (текстовый статус + ETA + трек-номер)."""
+    """Обновить статус трекинга от перевозчика (текстовый статус + ETA + трек-номер).
+
+    Публикует ``logistics.delivery.tracking`` → офис видит состояние перевозки на
+    карточке документа (matched по ``logistics_ref`` = ``number``).
+    """
     obj = await session.get(Shipment, shipment_id)
     if obj is None:
         raise HTTPException(status_code=404, detail="Отгрузка не найдена")
@@ -265,6 +277,12 @@ async def update_tracking(
         obj.eta = payload.eta
     if payload.tracking_no is not None:
         obj.tracking_no = payload.tracking_no
+    core.event_bus.emit(
+        session,
+        "logistics.delivery.tracking",
+        {"log_ref": obj.number, "number": obj.number, "tracking_status": obj.tracking_status,
+         "carrier_name": obj.carrier, "eta": obj.eta or "", "entity_ref": obj.number},
+    )
     await session.commit()
     await session.refresh(obj)
     return obj
