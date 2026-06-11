@@ -450,6 +450,8 @@
       <button class="tab" data-tab="tariffs" data-name="Тарифы и зоны"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 4-5"/></svg>Тарифы и зоны</button>
       <button class="tab" data-tab="problems" data-name="Проблемы и возвраты"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Проблемы и возвраты <span class="cnt alert">4</span></button>
       <button class="tab" data-tab="costs" data-name="Расходы"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Расходы</button>
+      <button class="tab" data-tab="fleet" data-name="Парк машин"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>Парк машин</button>
+      <button class="tab" data-tab="tender" data-name="Тендер на перевозку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 3h18v4H3zM3 10h18M3 17h18"/><path d="M7 10v11M17 10v11"/></svg>Тендер <span class="cnt">1</span></button>
     </div>
 
     <div class="scroll">
@@ -1044,6 +1046,66 @@
         </div>
       </section>
 
+      <!-- ============ ПАНЕЛЬ: ПАРК МАШИН ============ -->
+      <section class="panel" id="panel-fleet">
+        <div class="tbl-wrap">
+          <div class="panel-head">
+            <div><h2>Парк машин и пригодность груза</h2><p>Какие машины у перевозчиков и какие грузы они возят. Подбор пригодного перевозчика — по весу, категории и допускам (ADR, термо-режим, негабарит).</p></div>
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Добавить машину</button>
+          </div>
+
+          <!-- Подбор под груз (ghost) -->
+          <div class="ai-note" style="margin-bottom:14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg><p><b style="color:#5B45C9">Пример подбора:</b> груз <b>АКБ, 4 500 кг</b> → пригодны <b>Автолайт</b> (Тент 5т / Фура 20т) и <b>Свой транспорт</b> (Тор/Манипулятор). Мелкие (Белпочта, Европочта) отсекаются по грузоподъёмности. ИИ-подбор оптимального перевозчика — Итерация 1.</p></div>
+
+          <table class="table">
+            <thead><tr><th>Перевозчик</th><th>Парк машин</th><th class="n">Макс. г/п</th><th>Категории груза</th><th>ADR</th><th>Термо</th></tr></thead>
+            <tbody>
+              <tr><td><div class="grp-cell"><span class="gl" style="background:#1E73BE">АЛ</span><b>Автолайт Экспресс</b></div></td><td>Тент 5т · Фура 20т</td><td class="n">20 000 кг</td><td>обычный · АКБ · негабарит · опасный ADR</td><td><span class="badge-best">да</span></td><td class="muted-cell">—</td></tr>
+              <tr><td><div class="grp-cell"><span class="gl" style="background:#D6263A">DPD</span><b>DPD</b></div></td><td>Газель 1.5т · Фургон 3.5т</td><td class="n">3 500 кг</td><td>обычный · хрупкое</td><td class="muted-cell">—</td><td class="muted-cell">—</td></tr>
+              <tr><td><div class="grp-cell"><span class="gl" style="background:#0A8344">СД</span><b>СДЭК</b></div></td><td>Газель 1.5т · Фургон 3.5т</td><td class="n">3 500 кг</td><td>обычный · хрупкое · АКБ (до 1 т)</td><td class="muted-cell">—</td><td class="muted-cell">—</td></tr>
+              <tr><td><div class="grp-cell"><span class="gl" style="background:#E11A2C">ЕП</span><b>Европочта</b></div></td><td>Фургон 2т</td><td class="n">2 000 кг</td><td>обычный (до 30 кг)</td><td class="muted-cell">—</td><td class="muted-cell">—</td></tr>
+              <tr><td><div class="grp-cell"><span class="gl" style="background:#1A5DAA">БП</span><b>Белпочта</b></div></td><td>Фургон 1.5т</td><td class="n">1 500 кг</td><td>обычный (до 20 кг)</td><td class="muted-cell">—</td><td class="muted-cell">—</td></tr>
+              <tr><td><div class="grp-cell"><span class="gl" style="background:#0E9F6E">СТ</span><b>Свой транспорт</b></div></td><td>Тент 5т · Манипулятор 10т · Рефрижератор 8т</td><td class="n">10 000 кг</td><td>обычный · АКБ · негабарит · температурный</td><td class="muted-cell">—</td><td><span class="badge-best">да</span></td></tr>
+            </tbody>
+          </table>
+          <p class="tbl-note">Подбор: машина с достаточной грузоподъёмностью (термо-режим для рефрижератора) + допуск к категории груза. Это таргет рассылки тендера наёмным перевозчикам.</p>
+        </div>
+      </section>
+
+      <!-- ============ ПАНЕЛЬ: ТЕНДЕР НА ПЕРЕВОЗКУ ============ -->
+      <section class="panel" id="panel-tender">
+        <div class="tbl-wrap">
+          <div class="panel-head">
+            <div><h2>Тендер на перевозку · наёмный перевозчик по договору</h2><p>Рассылка пригодным перевозчикам с параметрами груза → сбор предложений → переговоры о снижении → договор → отгрузка.</p></div>
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Новый тендер</button>
+          </div>
+
+          <!-- Карточка тендера -->
+          <div class="ref-section">
+            <div class="ref-h"><span class="rn">ТНД</span><h3>ТНД-2026-9001 · АКБ LiFePO4 280Ач · 16 шт</h3><span class="rc">Минск → Гомель · 900 кг · АКБ · из ДОК-2026-0001 · дедлайн 13.06</span></div>
+
+            <div class="mp-grid" style="margin-bottom:14px">
+              <div class="mp"><div class="l">Статус</div><div class="v">Сбор предложений</div></div>
+              <div class="mp"><div class="l">Разослано</div><div class="v">3 перевозчикам</div></div>
+              <div class="mp"><div class="l">Предложений</div><div class="v">3</div></div>
+              <div class="mp"><div class="l">Лучшая цена</div><div class="v vol">600 BYN</div></div>
+            </div>
+
+            <table class="table">
+              <thead><tr><th>Перевозчик</th><th>Машина</th><th class="n">Срок</th><th class="n">Раунд</th><th class="n">Цена</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><div class="grp-cell"><span class="gl" style="background:#0E9F6E">СТ</span><b>Свой транспорт <span class="badge-best">лучшее</span></b></div></td><td>Тент 5т</td><td class="n">1 дн</td><td class="n">1</td><td class="n base">600 BYN</td><td><button class="btn btn-primary" style="padding:6px 12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg>Заключить</button></td></tr>
+                <tr><td><div class="grp-cell"><span class="gl" style="background:#1E73BE">АЛ</span><b>Автолайт Экспресс</b></div></td><td>Тент 5т</td><td class="n">2 дн</td><td class="n">1</td><td class="n">680 BYN</td><td><button class="btn" style="padding:6px 12px">Торг</button></td></tr>
+                <tr><td><div class="grp-cell"><span class="gl" style="background:#0A8344">СД</span><b>СДЭК</b></div></td><td>Фургон 3.5т</td><td class="n">1 дн</td><td class="n">1</td><td class="n">740 BYN</td><td><button class="btn" style="padding:6px 12px">Торг</button></td></tr>
+              </tbody>
+            </table>
+            <p class="tbl-note">Заключение договора создаёт отгрузку (ЛОГ-…) с выбранным перевозчиком и ценой, тендер переходит в «Договор заключён». Данные предложений копятся → бенчмарк цены для будущих тендеров.</p>
+          </div>
+
+          <div class="ai-note" style="margin-top:16px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4z"/></svg><p><b style="color:#5B45C9">Рассылка и переговоры — Итерация 1.</b> Реальная email/API-рассылка пригодным перевозчикам и ИИ-переговоры о снижении цены. В прототипе предложения вводятся вручную, но процесс рассылка → сбор → торг → договор уже работает.</p></div>
+        </div>
+      </section>
+
     </div>
   </main>
 
@@ -1138,6 +1200,8 @@
     problems: document.getElementById('panel-problems'),
     costs: document.getElementById('panel-costs'),
     tariffs: document.getElementById('panel-tariffs'),
+    fleet: document.getElementById('panel-fleet'),
+    tender: document.getElementById('panel-tender'),
   };
   const crumb = document.getElementById('crumbTab');
   tabs.forEach(t => t.addEventListener('click', () => {
