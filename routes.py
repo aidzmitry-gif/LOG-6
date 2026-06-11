@@ -18,6 +18,7 @@ from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
 from modules.logistics.models import Carrier, ImportShipment, Shipment
 from modules.logistics.schemas import (
+    CARRIERS_RB,
     CarrierCatalogItem,
     CarrierCostStat,
     CarrierCreate,
@@ -34,7 +35,6 @@ from modules.logistics.schemas import (
     StatusUpdate,
     TrackingUpdate,
 )
-from modules.logistics.schemas import CARRIERS_RB
 from modules.logistics.stages import DELIVERY_STAGES, IMPORT_STAGES
 
 router = APIRouter(tags=["logistics"])
