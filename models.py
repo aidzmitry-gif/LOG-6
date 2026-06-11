@@ -302,8 +302,11 @@ class CarrierRfqInvite(Base):
     """Приглашение перевозчика в тендер (кого включили в рассылку).
 
     Создаётся при ``broadcast`` по списку пригодных перевозчиков (``fleet``).
-    ``channel`` — способ (manual/email/api; реальная рассылка — Итерация 1),
-    ``status`` — состояние отклика (sent/viewed/responded/declined).
+    ``channel`` — способ доставки уведомления (email/telegram/phone/none/manual),
+    ``status`` — состояние отклика (sent/invited/viewed/responded/declined).
+    ``token`` — секрет публичной ссылки: перевозчик подаёт ставку сам через
+    ``POST /rfqs/bid/{token}`` (без авторизации). ``notified_at``/``detail`` —
+    журнал рассылки (когда и с каким результатом уведомили).
     """
 
     __tablename__ = "carrier_rfq_invite"
@@ -317,6 +320,9 @@ class CarrierRfqInvite(Base):
     carrier_code: Mapped[str] = mapped_column(String(32))
     channel: Mapped[str] = mapped_column(String(16), default="manual", server_default="manual")
     status: Mapped[str] = mapped_column(String(16), default="sent", server_default="sent")
+    token: Mapped[str] = mapped_column(String(40), default="", server_default="")
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime)
+    detail: Mapped[str] = mapped_column(String(255), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

@@ -1,7 +1,7 @@
 """Pydantic-схемы модуля Logistics."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
@@ -434,14 +434,18 @@ class InviteOut(BaseModel):
     carrier_code: str
     channel: str = "manual"
     status: str = "sent"
+    token: str = ""                     # секрет публичной ссылки на подачу ставки
+    notified_at: datetime | None = None
+    detail: str = ""                    # результат уведомления (журнал рассылки)
 
 
 class BroadcastOut(BaseModel):
-    """Итог рассылки тендера: сколько перевозчиков приглашено и кто."""
+    """Итог рассылки тендера: сколько перевозчиков приглашено, уведомлено и кто."""
 
     rfq_id: int
     status: str
     invited: int
+    notified: int = 0                   # фактически уведомлено (по контакту), без skip
     carriers: list[str]
 
 
@@ -449,6 +453,17 @@ class BidCreate(BaseModel):
     """Зарегистрировать предложение перевозчика (ручной ввод; реальная — Итерация 1)."""
 
     carrier_code: str
+    price: float
+    eta_days: int = 0
+    vehicle_class: str = ""
+    valid_until: str = ""
+    comment: str = ""
+
+
+class PublicBidCreate(BaseModel):
+    """Ставка перевозчика по публичной ссылке тендера (без авторизации; перевозчик
+    идентифицируется токеном приглашения, поэтому ``carrier_code`` не нужен)."""
+
     price: float
     eta_days: int = 0
     vehicle_class: str = ""

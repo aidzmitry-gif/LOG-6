@@ -15,7 +15,7 @@ from modules.logistics.events import on_document_posted, on_office_delivery_requ
 
 class LogisticsModule(ModuleContract):
     name = "logistics"
-    version = "0.3.0"
+    version = "0.4.0"
     api_prefix = "/logistics"
 
     def register(self, core: Core) -> None:

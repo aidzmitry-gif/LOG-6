@@ -7,6 +7,8 @@
 """
 from __future__ import annotations
 
+import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.runtime.core import Core
 from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
-from modules.logistics import analytics, fleet, pricing, seeds
+from modules.logistics import analytics, fleet, notify, pricing, seeds
 from modules.logistics.models import (
     Carrier,
     CarrierBid,
@@ -59,6 +61,7 @@ from modules.logistics.schemas import (
     ImportStageUpdate,
     InviteOut,
     NegotiateRequest,
+    PublicBidCreate,
     QuoteOut,
     QuoteRequest,
     RfqCreate,
@@ -876,8 +879,11 @@ async def broadcast_rfq(
 ):
     """Разослать тендер пригодным перевозчикам (по параметрам груза → ``fleet``).
 
-    Создаёт приглашения по перевозчикам, чьи парк и допуски подходят под груз.
-    Реальная email/API-рассылка — Итерация 1; здесь — фиксация приглашений.
+    Создаёт приглашения по перевозчикам, чьи парк и допуски подходят под груз, и
+    уведомляет их по контакту из реестра (email/telegram/phone; MVP — лог, реальная
+    доставка Итерация 1). Каждому приглашению выдаётся ``token`` публичной ссылки на
+    подачу ставки (``POST /logistics/rfqs/bid/{token}``). Повторная рассылка не
+    дублирует уже созданные приглашения.
     """
     rfq = await _get_rfq(session, rfq_id)
     matches = await _eligible_matches(
@@ -890,18 +896,41 @@ async def broadcast_rfq(
             await session.execute(select(CarrierRfqInvite).where(CarrierRfqInvite.rfq_id == rfq_id))
         ).scalars().all()
     }
+    contacts = {
+        c.code: c.contact for c in (await session.execute(select(Carrier))).scalars().all()
+    }
     carriers: list[str] = []
+    notified = 0
     for code, _m in matches:
         carriers.append(code)
-        if code not in invited:
-            session.add(CarrierRfqInvite(rfq_id=rfq_id, carrier_code=code))
+        if code in invited:
+            continue
+        token = uuid.uuid4().hex
+        contact = contacts.get(code, "")
+        channel = notify.pick_channel(contact)
+        message = notify.invite_message(
+            rfq.number, rfq.cargo, float(rfq.weight_kg or 0),
+            rfq.route_from, rfq.route_to, _carrier_name(code), f"/logistics/rfqs/bid/{token}",
+        )
+        result = notify.send_invite(channel, contact, message)
+        session.add(CarrierRfqInvite(
+            rfq_id=rfq_id, carrier_code=code, token=token, channel=result["channel"],
+            status="sent" if result["status"] == "sent" else "invited",
+            detail=result["detail"], notified_at=datetime.now(),
+        ))
+        if result["status"] == "sent":
+            notified += 1
     rfq.status = "sent"
     core.event_bus.emit(
         session, "logistics.rfq.broadcast",
-        {"rfq_id": rfq_id, "number": rfq.number, "carriers": carriers, "entity_ref": rfq.number},
+        {"rfq_id": rfq_id, "number": rfq.number, "carriers": carriers,
+         "notified": notified, "entity_ref": rfq.number},
     )
     await session.commit()
-    return BroadcastOut(rfq_id=rfq_id, status=rfq.status, invited=len(carriers), carriers=carriers)
+    return BroadcastOut(
+        rfq_id=rfq_id, status=rfq.status, invited=len(carriers),
+        notified=notified, carriers=carriers,
+    )
 
 
 @router.get("/rfqs/{rfq_id}/invites", response_model=list[InviteOut])
@@ -953,6 +982,41 @@ async def list_bids(rfq_id: int, session: AsyncSession = Depends(get_session)):
         await session.execute(select(CarrierBid).where(CarrierBid.rfq_id == rfq_id))
     ).scalars().all()
     return _bids_with_best(bids)
+
+
+@router.post("/rfqs/bid/{token}", response_model=BidOut, status_code=201)
+async def public_bid(
+    token: str, payload: PublicBidCreate, session: AsyncSession = Depends(get_session)
+):
+    """Публичный приём ставки перевозчика по токену из ссылки-приглашения (без авторизации).
+
+    Перевозчик подаёт предложение сам по ссылке из рассылки — без ручного ввода
+    офисом. ``token`` идентифицирует приглашение (тендер + перевозчик); тендер
+    переходит в ``collecting``, приглашение — в ``responded``.
+    """
+    inv = (
+        await session.execute(select(CarrierRfqInvite).where(CarrierRfqInvite.token == token))
+    ).scalars().first()
+    if inv is None:
+        raise HTTPException(status_code=404, detail="Приглашение по токену не найдено")
+    rfq = await _get_rfq(session, inv.rfq_id)
+    obj = CarrierBid(
+        rfq_id=inv.rfq_id, carrier_code=inv.carrier_code, price=Decimal(str(payload.price)),
+        eta_days=payload.eta_days, vehicle_class=payload.vehicle_class,
+        valid_until=payload.valid_until, comment=payload.comment, round=1,
+    )
+    session.add(obj)
+    inv.status = "responded"
+    if rfq.status in ("draft", "sent"):
+        rfq.status = "collecting"
+    await session.commit()
+    await session.refresh(obj)
+    return BidOut(
+        id=obj.id, rfq_id=obj.rfq_id, carrier_code=obj.carrier_code,
+        carrier=_carrier_name(obj.carrier_code), price=float(obj.price), eta_days=obj.eta_days,
+        vehicle_class=obj.vehicle_class, valid_until=obj.valid_until, comment=obj.comment,
+        round=obj.round, is_best=False,
+    )
 
 
 @router.post("/rfqs/{rfq_id}/negotiate", response_model=BidOut, status_code=201)
