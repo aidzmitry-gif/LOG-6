@@ -21,6 +21,8 @@
   `CarrierRfq`, `CarrierRfqInvite`, `CarrierBid` (схема `logistics`).
 - `pricing.py` — расчёт тарифа (`quote_tariff`, объёмный/оплач. вес) + балл/грейд (`score_carrier`/`grade_for`).
 - `fleet.py` — подбор пригодного перевозчика (`carrier_eligible`/`vehicle_fits`/`capability_allows`).
+- `analytics.py` — аналитика стоимости (`cost-insights`): разброс тарифов по зонам + самый
+  дешёвый перевозчик, экономия торга по тендерам, сумма к возврату по аудиту, рекомендации.
 - `seeds.py` — сид-данные (зоны, прайс-матрица, scorecard, аудит, парк машин, демо-тендер).
 - `routes.py` — HTTP-API `/logistics/*` (доставка, импорт, перевозчики, тарифы, парк, тендер, дашборд).
 - `schemas.py` — Pydantic-схемы всех групп.
@@ -60,7 +62,7 @@
   `/carriers/{code}/cargo-capabilities`, `/carriers/eligible` (подбор под груз).
 - **Тарифы:** `/zones(+seed)`, `/carrier-tariffs(+seed)`, `/costs(+/audit)`.
 - **Тендер:** `POST /rfqs(+seed)`, `/rfqs/{id}/broadcast|bids|negotiate|award`, `GET /rfqs/board`.
-- **Дашборд:** `/dashboard`, `/costs`.
+- **Дашборд:** `/dashboard`, `/costs`, `/cost-insights` (аналитика «улучшение стоимости»: зоны/тендер/аудит).
 
 ## Межмодульные связи и зависимости
 - **sales → logistics:** `sales.document.posted` → `Shipment` (`planned`) + `logistics.shipment.created`.

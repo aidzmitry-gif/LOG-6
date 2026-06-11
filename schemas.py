@@ -498,6 +498,46 @@ class AwardOut(BaseModel):
     shipment_number: str
 
 
+# --- Аналитика стоимости (cost-insights, «улучшать стоимость постоянно») -------
+class ZoneCostInsight(BaseModel):
+    """Свод по зоне: самый дешёвый перевозчик, средний/макс итог, разброс (потенциал)."""
+
+    zone_code: str
+    zone_name: str = ""
+    carriers: int = 0
+    cheapest_carrier: str = ""
+    cheapest_carrier_name: str = ""
+    cheapest_total: float = 0
+    avg_total: float = 0
+    max_total: float = 0
+    spread_pct: float = 0
+
+
+class TenderSaving(BaseModel):
+    """Экономия по заключённому тендеру: стартовая цена vs выигравшая."""
+
+    rfq_number: str
+    route: str = ""
+    carrier: str = ""
+    baseline: float = 0
+    awarded: float = 0
+    saved: float = 0
+    saved_pct: float = 0
+
+
+class CostInsightsOut(BaseModel):
+    """Сводка «улучшение стоимости»: где дешевле, экономия торга, к возврату, рекомендации."""
+
+    reference_weight_kg: float
+    zones: list[ZoneCostInsight]
+    potential_savings: float = 0       # Σ(avg − cheapest) по зонам на эталонный вес, BYN
+    best_savings_zone: str = ""
+    tender_savings_total: float = 0
+    tenders: list[TenderSaving]
+    audit_to_recover: float = 0
+    recommendations: list[str] = []
+
+
 # --- Справочник перевозчиков РБ (сиды + каталог, log-5) -----------------------
 # Способ интеграции в прототипе: manual/csv. Реальные API — Итерация 1+.
 # track_url — шаблон ссылки трекинга ({n} = трек-номер), уточняется при подключении.

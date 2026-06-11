@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.runtime.core import Core
 from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
-from modules.logistics import fleet, pricing, seeds
+from modules.logistics import analytics, fleet, pricing, seeds
 from modules.logistics.models import (
     Carrier,
     CarrierBid,
@@ -50,6 +50,7 @@ from modules.logistics.schemas import (
     CarrierOut,
     CarrierStat,
     CarrierTariffOut,
+    CostInsightsOut,
     CostReportOut,
     DashboardOut,
     EligibleCarrierOut,
@@ -1070,3 +1071,51 @@ async def seed_rfq(session: AsyncSession = Depends(get_session)):
     await session.commit()
     await session.refresh(rfq)
     return rfq
+
+
+# --- Аналитика стоимости (cost-insights, «улучшать стоимость постоянно») ------ #
+@router.get("/cost-insights", response_model=CostInsightsOut)
+async def cost_insights(
+    weight_kg: float = 30.0, session: AsyncSession = Depends(get_session)
+) -> CostInsightsOut:
+    """Сводка «улучшение стоимости» (ТЗ): где возить дешевле (разброс тарифов по зонам
+    и самый дешёвый перевозчик на эталонный вес ``weight_kg``), экономия торга по
+    заключённым тендерам, сумма к возврату по аудиту счетов и практические рекомендации.
+
+    Считается поверх уже собранных данных (тарифы/ставки/аудит) — без новых таблиц.
+    """
+    tariffs = (await session.execute(select(CarrierTariff))).scalars().all()
+    zone_name = {
+        z.code: z.name for z in (await session.execute(select(Zone))).scalars().all()
+    }
+    by_zone: dict[str, list[dict]] = {}
+    for t in tariffs:
+        by_zone.setdefault(t.zone_code, []).append({
+            "carrier_code": t.carrier_code,
+            "carrier": _carrier_name(t.carrier_code),
+            "total": pricing.quote_tariff(t, weight_kg)["total"],
+        })
+    zones = [
+        ins for zc in sorted(by_zone)
+        if (ins := analytics.zone_cost_insight(zc, zone_name.get(zc, zc), by_zone[zc]))
+    ]
+
+    tenders: list[dict] = []
+    for r in (await session.execute(select(CarrierRfq))).scalars().all():
+        if not r.awarded_price or float(r.awarded_price) <= 0:
+            continue   # экономию считаем только по заключённым тендерам
+        bids = (
+            await session.execute(select(CarrierBid).where(CarrierBid.rfq_id == r.id))
+        ).scalars().all()
+        ts = analytics.tender_saving(
+            r.number, _route(r.route_from, r.route_to),
+            _carrier_name(r.awarded_carrier_code),
+            [float(b.price) for b in bids if b.price is not None],
+        )
+        if ts:
+            tenders.append(ts)
+
+    audit = (await session.execute(select(FreightAuditLog))).scalars().all()
+    to_recover = sum(float(a.variance) for a in audit if float(a.variance) > 0)
+
+    return CostInsightsOut(**analytics.summarize(weight_kg, zones, tenders, to_recover))
