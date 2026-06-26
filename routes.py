@@ -200,6 +200,14 @@ async def update_shipment(
             {"log_ref": obj.number, "number": obj.number, "carrier_name": obj.carrier,
              "delivered_at": obj.eta or "", "entity_ref": obj.number},
         )
+        # логистика → финансы: тариф перевозчика = расход на фрахт (если задан)
+        if obj.amount and obj.amount > 0:
+            core.event_bus.emit(
+                session,
+                "logistics.freight.cost",
+                {"deal_id": obj.deal_id, "ref": obj.number, "carrier": obj.carrier,
+                 "amount": float(obj.amount), "entity_ref": f"shipment:{obj.id}"},
+            )
     await session.commit()
     await session.refresh(obj)
     return obj

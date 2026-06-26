@@ -44,6 +44,7 @@
 
 ## События
 - **Публикует:** `logistics.shipment.created`, `logistics.shipment.delivered` (→ sales),
+  `logistics.freight.cost` (→ finance; при доставке, если тариф `amount > 0` — расход на фрахт),
   `logistics.delivery.tracking` / `logistics.delivery.delivered` (→ office, статус перевозки),
   `logistics.carrier_order.created`, `logistics.import.customs_cleared` / `.arrived`,
   `logistics.rfq.broadcast` / `logistics.rfq.created` / `logistics.contract.signed` (тендер).
@@ -75,6 +76,7 @@
 ## Межмодульные связи и зависимости
 - **sales → logistics:** `sales.document.posted` → `Shipment` (`planned`) + `logistics.shipment.created`.
 - **logistics → sales:** `logistics.shipment.delivered` → закрытие сделки (won).
+- **logistics → finance:** `logistics.freight.cost` (при доставке, тариф `amount > 0`) → расход `Payment(kind="freight")`.
 - **office → logistics:** `logistics.delivery.requested` → спот-отгрузка (`Shipment`, `number`=log_ref)
   либо тендер (`CarrierRfq`, при `mode=contract`).
 - **logistics → office:** `logistics.delivery.tracking` / `.delivered` → офис видит статус перевозки
