@@ -67,6 +67,7 @@ from modules.logistics.schemas import (
     QuoteRequest,
     RfqCreate,
     RfqOut,
+    ScorecardMetricsUpdate,
     ScorecardOut,
     ShipmentCreate,
     ShipmentOut,
@@ -627,6 +628,43 @@ async def recompute_scorecard(session: AsyncSession = Depends(get_session)):
         _apply_score(card)
     await session.commit()
     return sorted(cards, key=lambda c: c.score, reverse=True)
+
+
+@router.patch("/carriers/scorecard/{carrier_code}", response_model=ScorecardOut)
+async def update_scorecard_metrics(
+    carrier_code: str,
+    payload: ScorecardMetricsUpdate,
+    period: str = "",
+    session: AsyncSession = Depends(get_session),
+):
+    """Правка KPI карточки перевозчика; балл/грейд пересчитываются автоматически.
+
+    ``period`` — обязательный параметр запроса (``?period=2026-06``); 404, если карточки нет.
+    """
+    if not period:
+        raise HTTPException(status_code=422, detail="period обязателен")
+    card = (
+        await session.execute(
+            select(CarrierScorecard).where(
+                CarrierScorecard.carrier_code == carrier_code,
+                CarrierScorecard.period == period,
+            )
+        )
+    ).scalars().first()
+    if card is None:
+        raise HTTPException(status_code=404, detail="Карточка не найдена")
+    data = payload.model_dump(exclude_none=True)
+    decimal_fields = {"otd_pct", "otif_pct", "damage_free_pct", "billing_accuracy_pct",
+                      "claims_ratio_pct", "cost_per_delivery"}
+    for k, v in data.items():
+        if k in decimal_fields:
+            setattr(card, k, Decimal(str(v)))
+        else:
+            setattr(card, k, v)
+    _apply_score(card)
+    await session.commit()
+    await session.refresh(card)
+    return card
 
 
 @router.get("/carriers/scorecard", response_model=list[ScorecardOut])

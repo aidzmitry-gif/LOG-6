@@ -276,6 +276,22 @@ class QuoteOut(BaseModel):
 
 
 # --- Scorecard перевозчиков (BACKEND_SPEC §3) ---------------------------------
+class ScorecardMetricsUpdate(BaseModel):
+    """Правка KPI перевозчика за период. Балл/грейд пересчитываются автоматически.
+
+    Все поля опциональны — менять можно по одному. ``shipments``/``cost_per_delivery``
+    в формулу балла не входят, но обновляются как контекстные метрики.
+    """
+
+    otd_pct: float | None = None
+    otif_pct: float | None = None
+    damage_free_pct: float | None = None
+    billing_accuracy_pct: float | None = None
+    claims_ratio_pct: float | None = None
+    shipments: int | None = None
+    cost_per_delivery: float | None = None
+
+
 class ScorecardOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
