@@ -118,3 +118,39 @@ def rank_bids(
         value = round(price_weight * price_norm + (1.0 - price_weight) * quality_norm, 4)
         ranked.append((b, value))
     return sorted(ranked, key=lambda t: t[1], reverse=True)
+
+
+# Порог «подозрительно дёшево»: ставка на ≥ 25% ниже медианы при ≥3 ставках = риск демпинга.
+DUMPING_THRESHOLD_PCT = 25.0
+DUMPING_MIN_BIDS = 3
+
+
+def _median(values: list[float]) -> float:
+    """Медиана списка (для нечётной длины — средний элемент, для чётной — среднее двух)."""
+    if not values:
+        return 0.0
+    sorted_v = sorted(values)
+    n = len(sorted_v)
+    mid = n // 2
+    return sorted_v[mid] if n % 2 else round((sorted_v[mid - 1] + sorted_v[mid]) / 2, 4)
+
+
+def bid_risk(bid: dict, all_bids: list[dict]) -> dict:
+    """Риск-признаки ставки против всех ставок тендера: дельта от медианы + флаг демпинга.
+
+    Возвращает ``{"deviation_pct": float, "is_suspiciously_cheap": bool, "median": float}``.
+    ``deviation_pct``: отклонение цены от медианы (положительное = дешевле медианы, в %).
+    ``is_suspiciously_cheap``: ставка дешевле медианы на ≥ ``DUMPING_THRESHOLD_PCT`` % при
+    наличии ≥ ``DUMPING_MIN_BIDS`` ставок — сигнал демпинга/риска срыва (приоритет №1 — деньги:
+    дешёвый-но-сорвавшийся перевозчик дороже доплаты надёжному).
+    """
+    prices = [float(b["price"]) for b in all_bids if float(b["price"]) > 0]
+    median = _median(prices)
+    price = float(bid.get("price") or 0)
+    if median <= 0 or price <= 0:
+        return {"deviation_pct": 0.0, "is_suspiciously_cheap": False, "median": median}
+    deviation = round((median - price) / median * 100, 1)
+    suspicious = (
+        len(prices) >= DUMPING_MIN_BIDS and deviation >= DUMPING_THRESHOLD_PCT
+    )
+    return {"deviation_pct": deviation, "is_suspiciously_cheap": suspicious, "median": median}

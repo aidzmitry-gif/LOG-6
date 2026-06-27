@@ -528,6 +528,11 @@ class TenderRecommendationOut(BaseModel):
     ``reliability_premium`` — доплата best_value к самому дешёвому (≥ 0): цена
     надёжности. ``same_carrier`` — оба совпали (выбор очевиден). ``rationale`` —
     человекочитаемое обоснование для менеджера/РОП.
+
+    ``median_price`` — медиана всех ставок (опорная цена тендера). ``cheapest_deviation_pct``
+    — на сколько % дешевле медианы самая дешёвая ставка (≥ 0). ``dumping_risk`` —
+    флаг «подозрительно дёшево» (≥25% ниже медианы при ≥3 ставках): рискованный
+    демпинг, выбор по цене может стоить срыва.
     """
 
     cheapest: BidOut
@@ -535,6 +540,9 @@ class TenderRecommendationOut(BaseModel):
     reliability_premium: float = 0
     same_carrier: bool = False
     rationale: str = ""
+    median_price: float = 0
+    cheapest_deviation_pct: float = 0
+    dumping_risk: bool = False
 
 
 # --- Аналитика стоимости (cost-insights, «улучшать стоимость постоянно») -------

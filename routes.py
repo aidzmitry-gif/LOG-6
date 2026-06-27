@@ -1087,6 +1087,11 @@ async def rfq_recommendation(rfq_id: int, session: AsyncSession = Depends(get_se
     quality = await _carrier_quality(session)
     best_grade = pricing.grade_for(quality[best_value.carrier_code]) \
         if best_value.carrier_code in quality else "—"
+    # Риск-метрика по самой дешёвой ставке: дельта от медианы + флаг демпинга
+    payload_bids = [{"carrier_code": b.carrier_code, "price": float(b.price)} for b in bids]
+    risk = pricing.bid_risk(
+        {"carrier_code": cheapest.carrier_code, "price": cheapest.price}, payload_bids
+    )
     if same:
         rationale = (
             f"{best_value.carrier} — и дешевле всех, и лучший по соотношению "
@@ -1097,9 +1102,16 @@ async def rfq_recommendation(rfq_id: int, session: AsyncSession = Depends(get_se
             f"Дешевле всех — {cheapest.carrier} ({cheapest.price:g} BYN). Надёжнее — "
             f"{best_value.carrier} (грейд {best_grade}, +{premium:g} BYN за надёжность)."
         )
+    if risk["is_suspiciously_cheap"]:
+        rationale += (
+            f" ⚠ Самая дешёвая ставка на {risk['deviation_pct']:g}% ниже медианы "
+            f"({risk['median']:g} BYN) — риск демпинга/срыва."
+        )
     return TenderRecommendationOut(
         cheapest=cheapest, best_value=best_value,
         reliability_premium=premium, same_carrier=same, rationale=rationale,
+        median_price=risk["median"], cheapest_deviation_pct=risk["deviation_pct"],
+        dumping_risk=risk["is_suspiciously_cheap"],
     )
 
 
