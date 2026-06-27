@@ -485,6 +485,8 @@ class BidOut(BaseModel):
     comment: str = ""
     round: int = 1
     is_best: bool = False           # вычисляется при выдаче (минимальная цена)
+    value_score: float = 0          # best-fit: компромисс цена↔качество ∈ [0, 1]
+    is_best_value: bool = False      # лучший по соотношению цена/качество (не только цена)
 
 
 class NegotiateRequest(BaseModel):
@@ -496,9 +498,15 @@ class NegotiateRequest(BaseModel):
 
 
 class AwardRequest(BaseModel):
-    """Выбрать перевозчика и заключить договор. Без ``carrier_code`` — лучший по цене."""
+    """Выбрать перевозчика и заключить договор.
+
+    Без ``carrier_code`` выбор по ``strategy``: ``cheapest`` (мин. цена, по умолчанию)
+    либо ``best_value`` (best-fit: цена↔качество по scorecard). С ``carrier_code`` —
+    конкретный перевозчик.
+    """
 
     carrier_code: str = ""
+    strategy: str = "cheapest"
 
 
 class AwardOut(BaseModel):

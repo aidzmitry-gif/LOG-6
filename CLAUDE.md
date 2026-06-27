@@ -21,7 +21,8 @@
 - `models.py` — ORM: `Shipment`, `ImportShipment`, `Carrier`, `Zone`, `CarrierTariff`,
   `CarrierScorecard`, `FreightAuditLog`, `CarrierVehicle`, `CarrierCargoCapability`,
   `CarrierRfq`, `CarrierRfqInvite`, `CarrierBid` (схема `logistics`).
-- `pricing.py` — расчёт тарифа (`quote_tariff`, объёмный/оплач. вес) + балл/грейд (`score_carrier`/`grade_for`).
+- `pricing.py` — расчёт тарифа (`quote_tariff`, объёмный/оплач. вес) + балл/грейд (`score_carrier`/`grade_for`)
+  + best-fit ранжирование ставок тендера (`rank_bids`: компромисс цена↔качество по scorecard).
 - `fleet.py` — подбор пригодного перевозчика (`carrier_eligible`/`vehicle_fits`/`capability_allows`).
 - `analytics.py` — аналитика стоимости (`cost-insights`): разброс тарифов по зонам + самый
   дешёвый перевозчик, экономия торга по тендерам, сумма к возврату по аудиту, рекомендации.
@@ -45,6 +46,7 @@
 ## События
 - **Публикует:** `logistics.shipment.created`, `logistics.shipment.delivered` (→ sales),
   `logistics.freight.cost` (→ finance; при доставке, если тариф `amount > 0` — расход на фрахт),
+  `logistics.freight.audit_refund` (→ finance; при аудите счёта с `variance > 0` — переплата к возврату),
   `logistics.delivery.tracking` / `logistics.delivery.delivered` (→ office, статус перевозки),
   `logistics.carrier_order.created`, `logistics.import.customs_cleared` / `.arrived`,
   `logistics.rfq.broadcast` / `logistics.rfq.created` / `logistics.contract.signed` (тендер).
@@ -68,8 +70,12 @@
 - **Доставка/импорт:** `/shipments(+board, +/carrier-order, +/tracking, +/{id}/quote)`, `/imports(+board)`.
 - **Перевозчики:** `/carriers(+catalog, +seed, +scorecard)`, `/carriers/{code}/vehicles`,
   `/carriers/{code}/cargo-capabilities`, `/carriers/eligible` (подбор под груз).
+  Балл/грейд scorecard **считаются из метрик** (`pricing.score_carrier`/`grade_for`), не из литералов
+  сида; `POST /carriers/scorecard/recompute` — пересчёт после правок KPI.
 - **Тарифы:** `/zones(+seed)`, `/carrier-tariffs(+seed)`, `/costs(+/audit)`.
 - **Тендер:** `POST /rfqs(+seed)`, `/rfqs/{id}/broadcast|bids|negotiate|award`, `GET /rfqs/board`,
+  `GET /rfqs/{id}/bids/ranked` (best-fit: цена↔качество, пометка `is_best_value`),
+  `POST /rfqs/{id}/award` с `strategy` (`cheapest` по умолчанию / `best_value`),
   `POST /rfqs/bid/{token}` (публичный приём ставки перевозчиком по ссылке, без авторизации).
 - **Дашборд:** `/dashboard`, `/costs`, `/cost-insights` (аналитика «улучшение стоимости»: зоны/тендер/аудит).
 
@@ -77,6 +83,7 @@
 - **sales → logistics:** `sales.document.posted` → `Shipment` (`planned`) + `logistics.shipment.created`.
 - **logistics → sales:** `logistics.shipment.delivered` → закрытие сделки (won).
 - **logistics → finance:** `logistics.freight.cost` (при доставке, тариф `amount > 0`) → расход `Payment(kind="freight")`.
+- **logistics → finance:** `logistics.freight.audit_refund` (аудит счёта, `variance > 0`) → возврат переплаты перевозчиком (проекция на стороне finance).
 - **office → logistics:** `logistics.delivery.requested` → спот-отгрузка (`Shipment`, `number`=log_ref)
   либо тендер (`CarrierRfq`, при `mode=contract`).
 - **logistics → office:** `logistics.delivery.tracking` / `.delivered` → офис видит статус перевозки

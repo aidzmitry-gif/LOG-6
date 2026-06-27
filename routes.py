@@ -586,20 +586,46 @@ async def quote_shipment(
 
 
 # --- Scorecard перевозчиков (BACKEND_SPEC §3) ----------------------------------
+def _apply_score(card: CarrierScorecard) -> None:
+    """Пересчитать балл/грейд из метрик качества (источник истины — не литералы сида)."""
+    score = pricing.score_carrier(
+        float(card.otd_pct), float(card.damage_free_pct),
+        float(card.billing_accuracy_pct), float(card.claims_ratio_pct),
+    )
+    card.score = Decimal(str(score))
+    card.grade = pricing.grade_for(score)
+
+
 @router.post("/carriers/scorecard/seed", response_model=list[ScorecardOut])
 async def seed_scorecard(session: AsyncSession = Depends(get_session)):
-    """Заполнить scorecard перевозчиков за период (идемпотентно по carrier+period)."""
+    """Заполнить scorecard перевозчиков за период (идемпотентно по carrier+period).
+
+    Балл/грейд считаются из метрик (``pricing.score_carrier``/``grade_for``), а не
+    берутся из литералов сида — единый источник истины для оценки.
+    """
     existing = {
         (s.carrier_code, s.period)
         for s in (await session.execute(select(CarrierScorecard))).scalars().all()
     }
     for item in seeds.SCORECARD_SEED:
         if (item["carrier_code"], item["period"]) not in existing:
-            session.add(CarrierScorecard(**item))
+            card = CarrierScorecard(**item)
+            _apply_score(card)
+            session.add(card)
     await session.commit()
     return (
         await session.execute(select(CarrierScorecard).order_by(CarrierScorecard.score.desc()))
     ).scalars().all()
+
+
+@router.post("/carriers/scorecard/recompute", response_model=list[ScorecardOut])
+async def recompute_scorecard(session: AsyncSession = Depends(get_session)):
+    """Пересчитать балл/грейд всех карточек из текущих метрик (после правок KPI)."""
+    cards = (await session.execute(select(CarrierScorecard))).scalars().all()
+    for card in cards:
+        _apply_score(card)
+    await session.commit()
+    return sorted(cards, key=lambda c: c.score, reverse=True)
 
 
 @router.get("/carriers/scorecard", response_model=list[ScorecardOut])
@@ -643,7 +669,11 @@ async def seed_audit(session: AsyncSession = Depends(get_session)):
 
 
 @router.post("/costs/audit", response_model=AuditEntryOut, status_code=201)
-async def create_audit_entry(payload: AuditEntryCreate, session: AsyncSession = Depends(get_session)):
+async def create_audit_entry(
+    payload: AuditEntryCreate,
+    core: Core = Depends(get_core),
+    session: AsyncSession = Depends(get_session),
+):
     """Зарегистрировать счёт перевозчика и сверить с ожидаемым тарифом.
 
     Если ``expected_amount`` не задан — считается из ``carrier_tariffs`` по
@@ -671,6 +701,15 @@ async def create_audit_entry(payload: AuditEntryCreate, session: AsyncSession = 
         status="open" if variance != 0 else "closed",
     )
     session.add(obj)
+    await session.flush()
+    # переплата перевозчика (variance>0) = деньги к возврату → finance (проекция на стороне finance)
+    if variance > 0:
+        core.event_bus.emit(
+            session,
+            "logistics.freight.audit_refund",
+            {"shipment_code": obj.shipment_code, "carrier": obj.carrier_code,
+             "amount": float(obj.variance), "entity_ref": f"audit:{obj.id}"},
+        )
     await session.commit()
     await session.refresh(obj)
     return obj
@@ -814,18 +853,41 @@ async def _eligible_matches(
 
 
 # --- Тендер на перевозку: RFQ / рассылка / предложения / договор (Блок 4) -------
+def _bid_out(b: CarrierBid, **extra) -> BidOut:
+    """BidOut из строки ставки (общие поля); ``extra`` — пометки (is_best/value_score/…)."""
+    return BidOut(
+        **{k: getattr(b, k) for k in (
+            "id", "rfq_id", "carrier_code", "eta_days", "vehicle_class",
+            "valid_until", "comment", "round")},
+        price=float(b.price), carrier=_carrier_name(b.carrier_code), **extra,
+    )
+
+
 def _bids_with_best(bids: list[CarrierBid]) -> list[BidOut]:
     """Предложения, отсортированные по цене, с пометкой лучшего (минимальная цена)."""
     ordered = sorted(bids, key=lambda b: float(b.price))
     best_id = ordered[0].id if ordered else None
+    return [_bid_out(b, is_best=(b.id == best_id)) for b in ordered]
+
+
+async def _carrier_quality(session: AsyncSession) -> dict[str, float]:
+    """Балл качества по перевозчику из последней по периоду карточки scorecard."""
+    cards = (
+        await session.execute(select(CarrierScorecard).order_by(CarrierScorecard.period))
+    ).scalars().all()
+    return {c.carrier_code: float(c.score) for c in cards}      # позже период перетирает ранний
+
+
+async def _bids_ranked(session: AsyncSession, bids: list[CarrierBid]) -> list[BidOut]:
+    """Best-fit ранжирование: цена↔качество (scorecard). Пометка лучшего по соотношению."""
+    quality = await _carrier_quality(session)
+    payload = [{"id": b.id, "carrier_code": b.carrier_code, "price": float(b.price)} for b in bids]
+    by_id = {b.id: b for b in bids}
+    ranked = pricing.rank_bids(payload, quality)
+    best_id = ranked[0][0]["id"] if ranked else None
     return [
-        BidOut(
-            **{k: getattr(b, k) for k in (
-                "id", "rfq_id", "carrier_code", "eta_days", "vehicle_class",
-                "valid_until", "comment", "round")},
-            price=float(b.price), carrier=_carrier_name(b.carrier_code), is_best=(b.id == best_id),
-        )
-        for b in ordered
+        _bid_out(by_id[item["id"]], value_score=value, is_best_value=(item["id"] == best_id))
+        for item, value in ranked
     ]
 
 
@@ -994,6 +1056,16 @@ async def list_bids(rfq_id: int, session: AsyncSession = Depends(get_session)):
     return _bids_with_best(bids)
 
 
+@router.get("/rfqs/{rfq_id}/bids/ranked", response_model=list[BidOut])
+async def list_bids_ranked(rfq_id: int, session: AsyncSession = Depends(get_session)):
+    """Best-fit ранжирование ставок: цена↔качество (scorecard), пометка лучшего по соотношению."""
+    await _get_rfq(session, rfq_id)
+    bids = (
+        await session.execute(select(CarrierBid).where(CarrierBid.rfq_id == rfq_id))
+    ).scalars().all()
+    return await _bids_ranked(session, bids)
+
+
 @router.post("/rfqs/bid/{token}", response_model=BidOut, status_code=201)
 async def public_bid(
     token: str, payload: PublicBidCreate, session: AsyncSession = Depends(get_session)
@@ -1069,9 +1141,10 @@ async def award_rfq(
 ):
     """Выбрать перевозчика и заключить договор: создаётся отгрузка, тендер закрыт.
 
-    Без ``carrier_code`` выбирается предложение с минимальной ценой. Создаётся
-    ``Shipment`` (``assigned``) с выбранным перевозчиком и ценой; тендер переходит
-    в ``contracted``; публикуется ``logistics.contract.signed``.
+    С ``carrier_code`` — конкретный перевозчик. Без него выбор по ``strategy``:
+    ``cheapest`` (мин. цена, по умолчанию) либо ``best_value`` (best-fit: цена↔качество
+    по scorecard). Создаётся ``Shipment`` (``assigned``); тендер → ``contracted``;
+    публикуется ``logistics.contract.signed``.
     """
     rfq = await _get_rfq(session, rfq_id)
     bids = (
@@ -1081,7 +1154,11 @@ async def award_rfq(
         bids = [b for b in bids if b.carrier_code == payload.carrier_code]
     if not bids:
         raise HTTPException(status_code=404, detail="Нет предложений для выбора")
-    chosen = min(bids, key=lambda b: float(b.price))
+    if not payload.carrier_code and payload.strategy == "best_value":
+        ranked = await _bids_ranked(session, bids)
+        chosen = next(b for b in bids if b.id == ranked[0].id)
+    else:
+        chosen = min(bids, key=lambda b: float(b.price))
 
     ship = Shipment(
         customer=rfq.office_doc_ref or rfq.number or f"Тендер {rfq_id}",

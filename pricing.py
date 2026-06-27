@@ -84,3 +84,37 @@ def grade_for(score: float) -> str:
     if score >= 83:
         return "B"
     return "C"
+
+
+# Доля цены в best-fit ранжировании ставок; остальное — балл качества (политика).
+PRICE_WEIGHT = 0.6
+
+
+def rank_bids(
+    bids: list[dict],
+    quality_by_carrier: dict[str, float],
+    *,
+    price_weight: float = PRICE_WEIGHT,
+) -> list[tuple[dict, float]]:
+    """Best-fit ранжирование ставок тендера: компромисс цена↔качество.
+
+    Самая дешёвая ставка не обязана выигрывать: срыв сроков и претензии по
+    ненадёжному перевозчику обходятся дороже скидки (приоритет №1 — деньги
+    собственнику). ``bids`` — словари с ключами ``carrier_code`` и ``price``;
+    ``quality_by_carrier`` — ``{carrier_code: балл 0..100}`` (из scorecard).
+
+    Возвращает ``[(bid, value)]`` по убыванию value ∈ [0, 1]: цена нормируется
+    (самая дешёвая → 1.0), качество = балл/100; нет балла у перевозчика →
+    нейтральные 0.5 (не наказываем за отсутствие истории).
+    """
+    prices = [float(b["price"]) for b in bids if float(b["price"]) > 0]
+    cheapest = min(prices) if prices else 0.0
+    ranked: list[tuple[dict, float]] = []
+    for b in bids:
+        price = float(b["price"])
+        price_norm = (cheapest / price) if price > 0 else 0.0
+        quality = quality_by_carrier.get(b["carrier_code"])
+        quality_norm = (float(quality) / 100.0) if quality is not None else 0.5
+        value = round(price_weight * price_norm + (1.0 - price_weight) * quality_norm, 4)
+        ranked.append((b, value))
+    return sorted(ranked, key=lambda t: t[1], reverse=True)
