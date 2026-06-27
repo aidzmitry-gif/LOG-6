@@ -521,6 +521,22 @@ class AwardOut(BaseModel):
     shipment_number: str
 
 
+class TenderRecommendationOut(BaseModel):
+    """Рекомендация по тендеру: дёшево vs надёжно, чтобы выбор был осознанным.
+
+    ``cheapest`` — минимальная цена; ``best_value`` — best-fit (цена↔качество).
+    ``reliability_premium`` — доплата best_value к самому дешёвому (≥ 0): цена
+    надёжности. ``same_carrier`` — оба совпали (выбор очевиден). ``rationale`` —
+    человекочитаемое обоснование для менеджера/РОП.
+    """
+
+    cheapest: BidOut
+    best_value: BidOut
+    reliability_premium: float = 0
+    same_carrier: bool = False
+    rationale: str = ""
+
+
 # --- Аналитика стоимости (cost-insights, «улучшать стоимость постоянно») -------
 class ZoneCostInsight(BaseModel):
     """Свод по зоне: самый дешёвый перевозчик, средний/макс итог, разброс (потенциал)."""

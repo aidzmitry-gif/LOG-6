@@ -71,6 +71,7 @@ from modules.logistics.schemas import (
     ShipmentCreate,
     ShipmentOut,
     StatusUpdate,
+    TenderRecommendationOut,
     TrackingUpdate,
     VehicleCreate,
     VehicleOut,
@@ -1064,6 +1065,42 @@ async def list_bids_ranked(rfq_id: int, session: AsyncSession = Depends(get_sess
         await session.execute(select(CarrierBid).where(CarrierBid.rfq_id == rfq_id))
     ).scalars().all()
     return await _bids_ranked(session, bids)
+
+
+@router.get("/rfqs/{rfq_id}/recommendation", response_model=TenderRecommendationOut)
+async def rfq_recommendation(rfq_id: int, session: AsyncSession = Depends(get_session)):
+    """Рекомендация по тендеру: дёшево (мин. цена) vs надёжно (best-fit), с обоснованием.
+
+    Делает выбор осознанным — менеджер видит доплату за надёжность и грейд перевозчика,
+    а не только самую низкую цену (приоритет №1 — деньги: срыв дешёвого дороже скидки).
+    """
+    await _get_rfq(session, rfq_id)
+    bids = (
+        await session.execute(select(CarrierBid).where(CarrierBid.rfq_id == rfq_id))
+    ).scalars().all()
+    if not bids:
+        raise HTTPException(status_code=404, detail="Нет предложений для рекомендации")
+    cheapest = _bids_with_best(bids)[0]
+    best_value = (await _bids_ranked(session, bids))[0]
+    premium = round(best_value.price - cheapest.price, 2)
+    same = best_value.carrier_code == cheapest.carrier_code
+    quality = await _carrier_quality(session)
+    best_grade = pricing.grade_for(quality[best_value.carrier_code]) \
+        if best_value.carrier_code in quality else "—"
+    if same:
+        rationale = (
+            f"{best_value.carrier} — и дешевле всех, и лучший по соотношению "
+            f"(грейд {best_grade}). Выбор очевиден."
+        )
+    else:
+        rationale = (
+            f"Дешевле всех — {cheapest.carrier} ({cheapest.price:g} BYN). Надёжнее — "
+            f"{best_value.carrier} (грейд {best_grade}, +{premium:g} BYN за надёжность)."
+        )
+    return TenderRecommendationOut(
+        cheapest=cheapest, best_value=best_value,
+        reliability_premium=premium, same_carrier=same, rationale=rationale,
+    )
 
 
 @router.post("/rfqs/bid/{token}", response_model=BidOut, status_code=201)
