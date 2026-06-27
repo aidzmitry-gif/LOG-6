@@ -233,6 +233,18 @@ class ZoneOut(BaseModel):
     sla_days_max: int = 2
 
 
+class CarrierTariffUpdate(BaseModel):
+    """Правка тарифа перевозчик×зона (опц. поля, меняем только переданные)."""
+
+    price_w5: float | None = None
+    price_w10: float | None = None
+    price_w30: float | None = None
+    over30_per_kg: float | None = None
+    pickup_fee: float | None = None
+    cod_pct: float | None = None
+    insurance_pct: float | None = None
+
+
 class CarrierTariffOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

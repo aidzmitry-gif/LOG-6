@@ -53,6 +53,7 @@ from modules.logistics.schemas import (
     CarrierOut,
     CarrierStat,
     CarrierTariffOut,
+    CarrierTariffUpdate,
     CostInsightsOut,
     CostReportOut,
     DashboardOut,
@@ -539,6 +540,31 @@ async def list_carrier_tariffs(zone: str = "", session: AsyncSession = Depends(g
     if zone:
         q = q.where(CarrierTariff.zone_code == zone)
     return (await session.execute(q)).scalars().all()
+
+
+@router.patch("/carrier-tariffs/{carrier_code}/{zone_code}", response_model=CarrierTariffOut)
+async def update_carrier_tariff(
+    carrier_code: str,
+    zone_code: str,
+    payload: CarrierTariffUpdate,
+    session: AsyncSession = Depends(get_session),
+):
+    """Правка тарифа перевозчик×зона. 404, если тарифа нет (создать — через seed)."""
+    obj = (
+        await session.execute(
+            select(CarrierTariff).where(
+                CarrierTariff.carrier_code == carrier_code,
+                CarrierTariff.zone_code == zone_code,
+            )
+        )
+    ).scalars().first()
+    if obj is None:
+        raise HTTPException(status_code=404, detail="Тариф не найден")
+    for k, v in payload.model_dump(exclude_none=True).items():
+        setattr(obj, k, Decimal(str(v)))
+    await session.commit()
+    await session.refresh(obj)
+    return obj
 
 
 @router.post("/shipments/{shipment_id}/quote", response_model=list[QuoteOut])
