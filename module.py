@@ -10,7 +10,11 @@ from __future__ import annotations
 from core.runtime.contract import ModuleContract, Widget
 from core.runtime.core import Core
 from modules.logistics import routes
-from modules.logistics.events import on_document_posted, on_office_delivery_requested
+from modules.logistics.events import (
+    on_document_posted,
+    on_office_delivery_requested,
+    on_procurement_received,
+)
 
 
 class LogisticsModule(ModuleContract):
@@ -24,6 +28,9 @@ class LogisticsModule(ModuleContract):
         core.subscribe("sales.document.posted", on_document_posted)
         # офис → логистика: заявка перевозчику (спот → отгрузка, договор → тендер)
         core.subscribe("logistics.delivery.requested", on_office_delivery_requested)
+        # закупка → логистика (ИНФО): приёмка закупки → отметка в импорт-цепочке
+        # (склад движет wms, мы только отражаем для дашборда — двойной учёт запрещён)
+        core.subscribe("procurement.received", on_procurement_received)
         # виджеты панели владельца (AI Control Tower)
         core.register_widget(Widget("logistics", "Логистика", source="logistics.shipments"))
         core.register_widget(

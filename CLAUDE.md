@@ -48,10 +48,12 @@
   `logistics.freight.cost` (→ finance; при доставке, если тариф `amount > 0` — расход на фрахт),
   `logistics.freight.audit_refund` (→ finance; при аудите счёта с `variance > 0` — переплата к возврату),
   `logistics.delivery.tracking` / `logistics.delivery.delivered` (→ office, статус перевозки),
-  `logistics.carrier_order.created`, `logistics.import.customs_cleared` / `.arrived`,
+  `logistics.carrier_order.created`, `logistics.import.customs_cleared` / `.arrived` / `.received`
+  (info — отметки в импорт-цепочке; **движение склада не делает logistics**, это wms),
   `logistics.rfq.broadcast` / `logistics.rfq.created` / `logistics.contract.signed` (тендер).
 - **Подписан на:** `sales.document.posted` (`kind == "order"`),
-  `logistics.delivery.requested` (заявка перевозчику из office).
+  `logistics.delivery.requested` (заявка перевозчику из office),
+  `procurement.received` (ИНФО: приёмка закупки → отметка в импорт-цепочке; см. `on_procurement_received`).
 
 ## Модель данных (таблицы схемы `logistics`)
 - `shipment` — доставка РБ/РФ (маршрут, перевозчик, груз, вес, тариф, трекинг, `status`).

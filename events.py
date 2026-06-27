@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
-from modules.logistics.models import CarrierRfq, Shipment
+from sqlalchemy import select
+
+from modules.logistics.models import CarrierRfq, ImportShipment, Shipment
 
 
 def _to_decimal(value) -> Decimal:
@@ -88,3 +90,57 @@ async def on_office_delivery_requested(payload: dict, ctx) -> None:
         "customer": ship.customer, "deal_id": ship.deal_id,
         "office_doc_ref": office_ref, "log_ref": ship.number, "entity_ref": ship.number,
     })
+
+
+async def on_procurement_received(payload: dict, ctx) -> None:
+    """Приёмка закупки (procurement → wms) → ИНФО-отметка в импорт-цепочке логистики.
+
+    Логистика лишь ОТРАЖАЕТ факт приёмки для дашборда («приход закупки»): находит/создаёт
+    ``ImportShipment`` по ``po_ref`` (из ``entity_ref="purchase:<id>"``), переводит ``stage``
+    в ``warehouse`` (информационно — «принято закупкой»), пишет ``customs_status``-отметку
+    и эмитит ``logistics.import.received`` (info). НИКАКИХ движений склада/остатков
+    здесь не происходит — приход на склад делает wms (он подписан на то же
+    ``procurement.received``, мы не дублируем).
+    """
+    if ctx is None:
+        return
+    session = ctx.session
+    bus = ctx.services.event_bus
+    entity_ref = str(payload.get("entity_ref") or "")
+    po_ref = entity_ref if entity_ref.startswith("purchase:") else ""
+    if not po_ref:
+        return
+
+    obj = (
+        await session.execute(select(ImportShipment).where(ImportShipment.po_ref == po_ref))
+    ).scalars().first()
+    if obj is None:
+        obj = ImportShipment(
+            supplier=str(payload.get("supplier") or ""),
+            cargo=str(payload.get("item") or ""),
+            qty=int(payload.get("qty") or 0),
+            po_ref=po_ref,
+            stage="warehouse",
+            customs_status="Принято закупкой",
+        )
+        session.add(obj)
+        await session.flush()
+        if not obj.number:
+            obj.number = f"ИМП-2026-{obj.id:04d}"
+    else:
+        obj.stage = "warehouse"
+        if not obj.customs_status:
+            obj.customs_status = "Принято закупкой"
+
+    bus.emit(
+        session,
+        "logistics.import.received",
+        {
+            "import_id": obj.id,
+            "number": obj.number,
+            "po_ref": po_ref,
+            "item": payload.get("item"),
+            "qty": payload.get("qty"),
+            "entity_ref": obj.number,
+        },
+    )
