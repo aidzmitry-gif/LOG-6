@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.domain.models import OutboxEvent
 from core.runtime.core import Core
 from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
@@ -58,6 +59,7 @@ from modules.logistics.schemas import (
     CostReportOut,
     DashboardOut,
     EligibleCarrierOut,
+    ImportInTransitOut,
     ImportShipmentCreate,
     ImportShipmentOut,
     ImportStageUpdate,
@@ -88,6 +90,8 @@ ASSIGNED_STATUS = "assigned"    # перевозчик назначен / зак
 WAREHOUSE_STAGE = "warehouse"   # импорт принят на склад (информационное событие)
 CUSTOMS_STAGE = "customs"
 CLIENT_PAYER = "клиент"         # доставка за счёт клиента (не расход компании)
+# LOG3-5: стадии «груз в движении» для нетто-пополнения (что уже едет, дозаказывать не надо).
+IN_TRANSIT_IMPORT_STAGES = ("factory", "consolidation", "in_transit", "customs")
 
 
 def _route(frm: str, to: str, fallback: str = "") -> str:
@@ -204,12 +208,14 @@ async def update_shipment(
              "delivered_at": obj.eta or "", "entity_ref": obj.number},
         )
         # логистика → финансы: тариф перевозчика = расход на фрахт (если задан)
+        # LOG3-2: деньги — str(BYN) (finance ждёт Decimal(str(...))); leg='domestic'
         if obj.amount and obj.amount > 0:
             core.event_bus.emit(
                 session,
                 "logistics.freight.cost",
                 {"deal_id": obj.deal_id, "ref": obj.number, "carrier": obj.carrier,
-                 "amount": float(obj.amount), "entity_ref": f"shipment:{obj.id}"},
+                 "amount": str(obj.amount), "leg": "domestic",
+                 "entity_ref": f"shipment:{obj.id}"},
             )
     await session.commit()
     await session.refresh(obj)
@@ -264,7 +270,7 @@ async def create_carrier_order(
             "shipment_id": obj.id,
             "carrier": obj.carrier,
             "carrier_order_no": obj.carrier_order_no,
-            "amount": float(obj.amount),
+            "amount": str(obj.amount),
             "entity_ref": f"shipment:{obj.id}",
         },
     )
@@ -320,6 +326,28 @@ async def import_board(session: AsyncSession = Depends(get_session)) -> FunnelBo
     return build_board(IMPORT_STAGES, rows, _import_card)
 
 
+@router.get("/imports/in-transit", response_model=list[ImportInTransitOut])
+async def imports_in_transit(session: AsyncSession = Depends(get_session)):
+    """Импорт-поставки В ДВИЖЕНИИ для нетто-расчёта пополнения (LOG3-5, pull).
+
+    ``stage ∈ {factory, consolidation, in_transit, customs}`` — «что уже едет».
+    Потребитель — WMS/Закупки для MRP-lite (не дозаказывать то, что уже в пути).
+    Пустой список = 200 (а не 404): «ничего не едет» — валидный ответ.
+    """
+    rows = (
+        await session.execute(
+            select(ImportShipment).where(ImportShipment.stage.in_(IN_TRANSIT_IMPORT_STAGES))
+        )
+    ).scalars().all()
+    return [
+        ImportInTransitOut(
+            po_ref=r.po_ref or "", cargo=r.cargo or "",
+            qty=int(r.qty or 0), eta=r.eta, stage=r.stage,
+        )
+        for r in rows
+    ]
+
+
 @router.post("/imports", response_model=ImportShipmentOut, status_code=201)
 async def create_import(payload: ImportShipmentCreate, session: AsyncSession = Depends(get_session)):
     """Создать импортную поставку. Номер генерируется автоматически, если не задан."""
@@ -333,6 +361,21 @@ async def create_import(payload: ImportShipmentCreate, session: AsyncSession = D
     await session.commit()
     await session.refresh(obj)
     return obj
+
+
+async def _import_freight_already_emitted(session: AsyncSession, import_id: int) -> bool:
+    """B2 (ревью круга 3): идемпотентность LOG3-1 через outbox.
+
+    Защита от сценария warehouse → customs → warehouse: повторное PATCH-обновление в
+    warehouse не должно задвоить ``logistics.freight.cost``. Проверка идёт по уже
+    лежащим в outbox эмитам с `ref='import:<id>'`. Работает на SQLite и Postgres
+    (читаем JSON в Python, не зависим от server-side JSON-операторов).
+    """
+    rows = (await session.execute(
+        select(OutboxEvent).where(OutboxEvent.event_type == "logistics.freight.cost")
+    )).scalars().all()
+    needle = f"import:{import_id}"
+    return any(e.payload.get("ref") == needle for e in rows)
 
 
 @router.patch("/imports/{import_id}", response_model=ImportShipmentOut)
@@ -356,12 +399,28 @@ async def update_import(
             "logistics.import.customs_cleared",
             {"container_no": obj.container_no, "supplier": obj.supplier, "entity_ref": f"import:{obj.id}"},
         )
-    if payload.stage == WAREHOUSE_STAGE:
+    # LOG3-1: эмитим info+freight ТОЛЬКО при ПЕРВОМ переходе в warehouse — повтор PATCH
+    # в warehouse не должен дублировать расход на фрахт (двойной учёт = потеря денег).
+    if prev_stage != WAREHOUSE_STAGE and payload.stage == WAREHOUSE_STAGE:
         core.event_bus.emit(
             session,
             "logistics.import.arrived",
             {"cargo": obj.cargo, "qty": obj.qty, "po_ref": obj.po_ref, "entity_ref": f"import:{obj.id}"},
         )
+        # LOG3-1: китайское плечо → finance как freight.cost (leg='import', без deal_id —
+        # импорт привязан к po_ref, не к сделке). Сумма только при amount>0.
+        # B2 ревью: defence-in-depth от сценария warehouse→customs→warehouse (откат +
+        # переотметка) — проверяем outbox, чтобы повторный эмит не задвоил расход.
+        if obj.amount and obj.amount > 0 and not await _import_freight_already_emitted(
+            session, obj.id,
+        ):
+            core.event_bus.emit(
+                session,
+                "logistics.freight.cost",
+                {"ref": f"import:{obj.id}", "carrier": "", "amount": str(obj.amount),
+                 "po_ref": obj.po_ref, "leg": "import",
+                 "entity_ref": f"import:{obj.id}"},
+            )
     await session.commit()
     await session.refresh(obj)
     return obj
@@ -768,12 +827,13 @@ async def create_audit_entry(
     session.add(obj)
     await session.flush()
     # переплата перевозчика (variance>0) = деньги к возврату → finance (проекция на стороне finance)
+    # LOG3-2: деньги — str(BYN), не float (дрейф копеек у finance Numeric).
     if variance > 0:
         core.event_bus.emit(
             session,
             "logistics.freight.audit_refund",
             {"shipment_code": obj.shipment_code, "carrier": obj.carrier_code,
-             "amount": float(obj.variance), "entity_ref": f"audit:{obj.id}"},
+             "amount": str(obj.variance), "entity_ref": f"audit:{obj.id}"},
         )
     await session.commit()
     await session.refresh(obj)
@@ -946,9 +1006,12 @@ async def _carrier_quality(session: AsyncSession) -> dict[str, float]:
 async def _bids_ranked(session: AsyncSession, bids: list[CarrierBid]) -> list[BidOut]:
     """Best-fit ранжирование: цена↔качество (scorecard). Пометка лучшего по соотношению."""
     quality = await _carrier_quality(session)
-    payload = [{"id": b.id, "carrier_code": b.carrier_code, "price": float(b.price)} for b in bids]
+    # Локальный вход для pricing.rank_bids (НЕ payload шины) — float корректен.
+    bids_for_pricing = [
+        {"id": b.id, "carrier_code": b.carrier_code, "price": float(b.price)} for b in bids
+    ]
     by_id = {b.id: b for b in bids}
-    ranked = pricing.rank_bids(payload, quality)
+    ranked = pricing.rank_bids(bids_for_pricing, quality)
     best_id = ranked[0][0]["id"] if ranked else None
     return [
         _bid_out(by_id[item["id"]], value_score=value, is_best_value=(item["id"] == best_id))
@@ -1151,10 +1214,13 @@ async def rfq_recommendation(rfq_id: int, session: AsyncSession = Depends(get_se
     quality = await _carrier_quality(session)
     best_grade = pricing.grade_for(quality[best_value.carrier_code]) \
         if best_value.carrier_code in quality else "—"
-    # Риск-метрика по самой дешёвой ставке: дельта от медианы + флаг демпинга
-    payload_bids = [{"carrier_code": b.carrier_code, "price": float(b.price)} for b in bids]
+    # Риск-метрика по самой дешёвой ставке: дельта от медианы + флаг демпинга.
+    # Локальный вход для pricing.bid_risk (НЕ payload шины) — float корректен.
+    bids_for_risk = [
+        {"carrier_code": b.carrier_code, "price": float(b.price)} for b in bids
+    ]
     risk = pricing.bid_risk(
-        {"carrier_code": cheapest.carrier_code, "price": cheapest.price}, payload_bids
+        {"carrier_code": cheapest.carrier_code, "price": cheapest.price}, bids_for_risk
     )
     if same:
         rationale = (
@@ -1295,7 +1361,7 @@ async def award_rfq(
         session, "logistics.contract.signed",
         {
             "rfq_id": rfq_id, "rfq_number": rfq.number, "carrier": ship.carrier,
-            "carrier_code": chosen.carrier_code, "price": float(chosen.price),
+            "carrier_code": chosen.carrier_code, "price": str(chosen.price),
             "shipment_id": ship.id, "shipment_number": ship.number,
             "office_doc_ref": rfq.office_doc_ref, "entity_ref": ship.number,
         },
@@ -1382,4 +1448,14 @@ async def cost_insights(
     audit = (await session.execute(select(FreightAuditLog))).scalars().all()
     to_recover = sum(float(a.variance) for a in audit if float(a.variance) > 0)
 
-    return CostInsightsOut(**analytics.summarize(weight_kg, zones, tenders, to_recover))
+    # LOG3-6: китайский импорт-фрахт делает видимыми деньги, которых не было в KPI.
+    # СХОДИМОСТЬ С FINANCE (B1 ревью): считаем ровно те поставки, которые УЖЕ эмитили
+    # freight.cost (stage='warehouse' + amount>0). Иначе KPI «20k» при «8k» в финансах.
+    imports = (await session.execute(select(ImportShipment))).scalars().all()
+    import_freight = analytics.import_freight_summary(
+        [float(i.amount or 0) for i in imports if i.stage == WAREHOUSE_STAGE]
+    )
+
+    return CostInsightsOut(**analytics.summarize(
+        weight_kg, zones, tenders, to_recover, import_freight=import_freight,
+    ))

@@ -111,6 +111,21 @@ class ImportStageUpdate(BaseModel):
     customs_status: str | None = None
 
 
+class ImportInTransitOut(BaseModel):
+    """Импорт-поставка в движении (LOG3-5, pull-провайдер для нетто-пополнения).
+
+    Срез ``ImportShipment`` со стадиями factory/consolidation/in_transit/customs —
+    «что уже едет, дозаказывать не надо». Потребитель — нетто-расчёт WMS/Закупок
+    (S&OP, круг 4). Связь по ``po_ref``/sku-строке, без FK.
+    """
+
+    po_ref: str
+    cargo: str
+    qty: int
+    eta: str | None = None
+    stage: str
+
+
 # --- Перевозчики --------------------------------------------------------------
 class CarrierCreate(BaseModel):
     name: str
@@ -610,6 +625,11 @@ class CostInsightsOut(BaseModel):
     tender_savings_total: float = 0
     tenders: list[TenderSaving]
     audit_to_recover: float = 0
+    # LOG3-6: импорт-фрахт (китайское плечо) — Σ ImportShipment.amount по всем поставкам, BYN.
+    # Делает видимыми деньги, которые до этого не отражались в cost-insights.
+    import_freight_total: float = 0
+    import_freight_avg: float = 0      # средняя себестоимость фрахта на импорт-поставку
+    import_freight_count: int = 0      # сколько поставок участвует в сумме (amount > 0)
     recommendations: list[str] = []
 
 

@@ -65,6 +65,20 @@ def tender_saving(rfq_number: str, route: str, carrier: str, prices: list[float]
     }
 
 
+def import_freight_summary(amounts: list[float]) -> dict:
+    """Сводка китайского импорт-фрахта (BYN): Σ, среднее на поставку, количество.
+
+    Вход — список ``ImportShipment.amount`` (себестоимость фрахта плеча). Учитываются
+    только записи с ``amount > 0`` (нулевые суммы — это «фрахт пока не оценён», в
+    среднее не должны размывать его до нуля). Используется в cost-insights (LOG3-6),
+    чтобы китайское плечо стало видимым в KPI «сколько мы тратим на логистику».
+    """
+    vals = [float(a) for a in amounts if a is not None and float(a) > 0]
+    total = sum(vals)
+    avg = (total / len(vals)) if vals else 0.0
+    return {"total": _money(total), "count": len(vals), "avg": _money(avg)}
+
+
 def build_recommendations(zones: list[dict], tenders: list[dict], audit_to_recover: float) -> list[str]:
     """Топ практических рекомендаций по снижению стоимости (человекочитаемый текст)."""
     recs: list[str] = []
@@ -88,15 +102,18 @@ def build_recommendations(zones: list[dict], tenders: list[dict], audit_to_recov
 
 
 def summarize(reference_weight_kg: float, zones: list[dict], tenders: list[dict],
-              audit_to_recover: float) -> dict:
+              audit_to_recover: float, import_freight: dict | None = None) -> dict:
     """Собрать полный отчёт cost-insights из готовых частей.
 
     ``potential_savings`` — сумма по зонам ``(avg − cheapest)`` на эталонный вес: сколько
     экономит выбор самого дешёвого перевозчика вместо среднего на одну отправку.
     ``best_savings_zone`` — зона с наибольшим абсолютным потенциалом.
+    ``import_freight`` (LOG3-6) — ``{total, avg, count}`` из ``import_freight_summary``;
+    при ``None`` трактуется как «нет данных» (нули в выходе).
     """
     potential = sum(z["avg_total"] - z["cheapest_total"] for z in zones)
     best_zone = max(zones, key=lambda z: z["avg_total"] - z["cheapest_total"])["zone_code"] if zones else ""
+    imp = import_freight or {"total": 0.0, "avg": 0.0, "count": 0}
     return {
         "reference_weight_kg": reference_weight_kg,
         "zones": zones,
@@ -105,5 +122,8 @@ def summarize(reference_weight_kg: float, zones: list[dict], tenders: list[dict]
         "tender_savings_total": _money(sum(t["saved"] for t in tenders)),
         "tenders": tenders,
         "audit_to_recover": _money(audit_to_recover),
+        "import_freight_total": _money(imp.get("total", 0.0)),
+        "import_freight_avg": _money(imp.get("avg", 0.0)),
+        "import_freight_count": int(imp.get("count", 0)),
         "recommendations": build_recommendations(zones, tenders, audit_to_recover),
     }

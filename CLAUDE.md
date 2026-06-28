@@ -45,15 +45,36 @@
 
 ## События
 - **Публикует:** `logistics.shipment.created`, `logistics.shipment.delivered` (→ sales),
-  `logistics.freight.cost` (→ finance; при доставке, если тариф `amount > 0` — расход на фрахт),
-  `logistics.freight.audit_refund` (→ finance; при аудите счёта с `variance > 0` — переплата к возврату),
+  `logistics.freight.cost` (→ finance; **`leg='domestic'|'import'`**: домашний фрахт при
+  delivered `Shipment` несёт `deal_id`, китайское плечо при первом переходе ImportShipment
+  в warehouse — `ref='import:<id>'`, `po_ref`, без `deal_id`; **деньги в payload — `str(BYN)`**,
+  finance ждёт `Decimal(str(...))` — иначе дрейф копеек, LOG3-2),
+  `logistics.freight.audit_refund` (→ finance; `variance > 0` — переплата к возврату; amount=str),
   `logistics.delivery.tracking` / `logistics.delivery.delivered` (→ office, статус перевозки),
   `logistics.carrier_order.created`, `logistics.import.customs_cleared` / `.arrived` / `.received`
   (info — отметки в импорт-цепочке; **движение склада не делает logistics**, это wms),
-  `logistics.rfq.broadcast` / `logistics.rfq.created` / `logistics.contract.signed` (тендер).
+  `logistics.rfq.broadcast` / `logistics.rfq.created` / `logistics.contract.signed`
+  (тендер; `price` = str(BYN), LOG3-2).
 - **Подписан на:** `sales.document.posted` (`kind == "order"`),
   `logistics.delivery.requested` (заявка перевозчику из office),
-  `procurement.received` (ИНФО: приёмка закупки → отметка в импорт-цепочке; см. `on_procurement_received`).
+  `procurement.received` (**INFO** — приёмка закупки → отметка в импорт-цепочке;
+  см. `on_procurement_received`).
+
+### Контракт `logistics.import.received` (INFO; LOG3-4)
+
+`{import_id, number, po_ref, item, qty, freight_amount:str, eta, supplier, entity_ref}`.
+
+**Осознанное решение — оставляем INFO без обязательного подписчика.** Фрахт идёт отдельным
+событием `logistics.freight.cost` (`leg='import'`) → finance; приход на склад — wms по тому же
+`procurement.received` (логистика не дублирует движения склада). `import.received` — сигнал для
+дашборда «приход закупки отмечен на импорт-доске», подписчиков пока нет, и это нормально.
+
+### Граница импорт-доски (LOG3-3)
+
+`on_procurement_received` создаёт **новую** `ImportShipment` ТОЛЬКО при наличии import-маркера
+в payload (`origin='import'` / непустой `incoterms` / страна не РБ). Без маркера и без
+существующей записи по `po_ref` — выходим молча (внутренние закупки не должны засорять
+импорт-доску).
 
 ## Модель данных (таблицы схемы `logistics`)
 - `shipment` — доставка РБ/РФ (маршрут, перевозчик, груз, вес, тариф, трекинг, `status`).
@@ -69,7 +90,9 @@
 - Связь со сделкой — только по `deal_id` (число, без FK; модули в разных схемах).
 
 ## API-эндпоинты (ключевые)
-- **Доставка/импорт:** `/shipments(+board, +/carrier-order, +/tracking, +/{id}/quote)`, `/imports(+board)`.
+- **Доставка/импорт:** `/shipments(+board, +/carrier-order, +/tracking, +/{id}/quote)`,
+  `/imports(+board)`, `/imports/in-transit` (pull-провайдер «что уже едет» для нетто-пополнения
+  WMS/Закупок, LOG3-5; срез по `stage ∈ {factory, consolidation, in_transit, customs}`).
 - **Перевозчики:** `/carriers(+catalog, +seed, +scorecard)`, `/carriers/{code}/vehicles`,
   `/carriers/{code}/cargo-capabilities`, `/carriers/eligible` (подбор под груз).
   Балл/грейд scorecard **считаются из метрик** (`pricing.score_carrier`/`grade_for`), не из литералов
