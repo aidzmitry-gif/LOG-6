@@ -2,12 +2,18 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from core.services.logistics import ExactInvoiceIdentity
 
 
 # --- Доставка РБ/РФ -----------------------------------------------------------
 class ShipmentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    invoice: ExactInvoiceIdentity
+    source_key: str = Field(min_length=1, max_length=180)
     customer: str
     number: str = ""
     address: str = ""
@@ -22,7 +28,7 @@ class ShipmentCreate(BaseModel):
     payer: str = "компания"    # кто оплачивает доставку (компания/клиент)
     priority: str = "Средний"
     owner: str = ""
-    status: str = "planned"
+    status: Literal["planned"] = "planned"
     eta: str | None = None
     tracking_no: str = ""
     tracking_status: str = ""
@@ -30,6 +36,10 @@ class ShipmentCreate(BaseModel):
 
 
 class ShipmentOut(BaseModel):
+    organization_id: int
+    invoice_document_id: int
+    invoice_version: int
+    invoice_content_sha256: str
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -424,6 +434,9 @@ class EligibleCarrierOut(BaseModel):
 
 # --- Тендер на перевозку: RFQ / приглашения / предложения (Блок 4) ------------
 class RfqCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    invoice: ExactInvoiceIdentity
+    source_key: str = Field(min_length=1, max_length=180)
     """Создать тендер на перевозку (наёмный перевозчик по договору)."""
 
     cargo: str = ""
@@ -444,6 +457,10 @@ class RfqCreate(BaseModel):
 
 
 class RfqOut(BaseModel):
+    organization_id: int
+    invoice_document_id: int
+    invoice_version: int
+    invoice_content_sha256: str
     model_config = ConfigDict(from_attributes=True)
 
     id: int

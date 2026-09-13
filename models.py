@@ -7,8 +7,10 @@ from decimal import Decimal
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
+    ForeignKey,
     Integer,
     Numeric,
     String,
@@ -346,4 +348,78 @@ class CarrierBid(Base):
     valid_until: Mapped[str] = mapped_column(String(32), default="", server_default="")
     comment: Mapped[str] = mapped_column(String(255), default="", server_default="")
     round: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ShipmentInvoiceBinding(Base):
+    __tablename__ = "shipment_invoice_binding"
+    __table_args__ = (UniqueConstraint("organization_id", "source_key"),
+        CheckConstraint("organization_id > 0 AND document_id > 0 AND document_version > 0", name="shipment_binding_positive"),
+        {"schema": "logistics"})
+    shipment_id: Mapped[int] = mapped_column(ForeignKey("logistics.shipment.id"), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer)
+    deal_id: Mapped[int] = mapped_column(Integer)
+    document_id: Mapped[int] = mapped_column(Integer)
+    document_version: Mapped[int] = mapped_column(Integer)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    source_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    actor: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RfqInvoiceBinding(Base):
+    __tablename__ = "rfq_invoice_binding"
+    __table_args__ = (UniqueConstraint("organization_id", "source_key"), {"schema": "logistics"})
+    rfq_id: Mapped[int] = mapped_column(ForeignKey("logistics.carrier_rfq.id"), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(Integer)
+    deal_id: Mapped[int] = mapped_column(Integer)
+    document_id: Mapped[int] = mapped_column(Integer)
+    document_version: Mapped[int] = mapped_column(Integer)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    source_key: Mapped[str] = mapped_column(String(200))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    actor: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ShipmentJournal(Base):
+    __tablename__ = "shipment_journal"
+    __table_args__ = {"schema": "logistics"}
+    id: Mapped[int] = mapped_column(primary_key=True)
+    generation: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ShippingExecution(Base):
+    """One immutable logistical intent per exact invoice version, shared by producers."""
+    __tablename__ = "shipping_execution"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "document_id", "document_version", name="shipping_execution_invoice_version"),
+        CheckConstraint("organization_id > 0 AND document_id > 0 AND document_version > 0", name="shipping_execution_positive"),
+        {"schema": "logistics"},
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("accounting.organization.id"))
+    document_id: Mapped[int] = mapped_column(ForeignKey("sales.deal_document.id"))
+    document_version: Mapped[int] = mapped_column(Integer)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    intent: Mapped[dict] = mapped_column(JSON)
+    intent_digest: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ShipmentIntake(Base):
+    __tablename__ = "shipment_intake"
+    __table_args__ = (UniqueConstraint("source_kind", "source_key", "source_revision"),
+                     {"schema": "logistics"})
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_kind: Mapped[str] = mapped_column(String(40))
+    source_key: Mapped[str] = mapped_column(String(200))
+    source_revision: Mapped[str] = mapped_column(String(80))
+    request_digest: Mapped[str] = mapped_column(String(64))
+    snapshot: Mapped[dict] = mapped_column(JSON)
+    state: Mapped[str] = mapped_column(String(20), default="pending")
+    pending_reason: Mapped[str] = mapped_column(String(200))
+    shipment_id: Mapped[int | None] = mapped_column(ForeignKey("logistics.shipment.id"))
+    rfq_id: Mapped[int | None] = mapped_column(ForeignKey("logistics.carrier_rfq.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

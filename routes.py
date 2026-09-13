@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,8 +19,10 @@ from core.domain.models import OutboxEvent
 from core.runtime.core import Core
 from core.runtime.deps import get_core, get_session
 from core.runtime.funnel import FunnelBoardOut, FunnelCard, build_board
+from core.services.auth import get_current_user
 from core.services.config import get_settings
 from modules.logistics import analytics, fleet, notify, pricing, seeds
+from modules.logistics import shipment_writer as shipping
 from modules.logistics.models import (
     Carrier,
     CarrierBid,
@@ -32,7 +34,9 @@ from modules.logistics.models import (
     CarrierVehicle,
     FreightAuditLog,
     ImportShipment,
+    RfqInvoiceBinding,
     Shipment,
+    ShipmentIntake,
     Zone,
 )
 from modules.logistics.schemas import (
@@ -83,7 +87,18 @@ from modules.logistics.schemas import (
 )
 from modules.logistics.stages import DELIVERY_STAGES, IMPORT_STAGES, TENDER_STAGES
 
-router = APIRouter(tags=["logistics"])
+
+async def rfq_access(request: Request, session=Depends(get_session), core=Depends(get_core), user=Depends(get_current_user)):
+    rfq_id = request.path_params.get("rfq_id")
+    if rfq_id is not None:
+        if request.method == "GET":
+            await shipping.read(session, core, user, int(rfq_id), rfq=True)
+        else:
+            await shipping.locked(session, core, user, int(rfq_id), rfq=True,
+                                  allow_award_replay=request.url.path.endswith("/award"))
+
+
+router = APIRouter(tags=["logistics"], dependencies=[Depends(rfq_access)])
 
 DELIVERED_STATUS = "delivered"  # доставка завершена → закрытие сделки (logistics → sales)
 ASSIGNED_STATUS = "assigned"    # перевозчик назначен / заказ у перевозчика оформлен
@@ -154,27 +169,26 @@ def _import_card(r: ImportShipment) -> FunnelCard:
 
 # --- Доставка РБ/РФ (log-1) ---------------------------------------------------
 @router.get("/shipments", response_model=list[ShipmentOut])
-async def list_shipments(session: AsyncSession = Depends(get_session)):
+async def list_shipments(session: AsyncSession = Depends(get_session), core: Core = Depends(get_core), user=Depends(get_current_user)):
     """Доставки РБ/РФ (плоский список — для аналитики и совместимости)."""
-    return (await session.execute(select(Shipment).order_by(Shipment.id.desc()))).scalars().all()
+    return await shipping.rows(session, core, user)
 
 
 @router.get("/board", response_model=FunnelBoardOut)
-async def delivery_board(session: AsyncSession = Depends(get_session)) -> FunnelBoardOut:
+async def delivery_board(session: AsyncSession = Depends(get_session), core: Core = Depends(get_core), user=Depends(get_current_user)) -> FunnelBoardOut:
     """Воронка доставок РБ/РФ: заявки сгруппированы по статусу."""
-    rows = (await session.execute(select(Shipment))).scalars().all()
+    rows = await shipping.rows(session, core, user)
     return build_board(DELIVERY_STAGES, rows, _shipment_card, stage_of=lambda r: r.status)
 
 
 @router.post("/shipments", response_model=ShipmentOut, status_code=201)
-async def create_shipment(payload: ShipmentCreate, session: AsyncSession = Depends(get_session)):
+async def create_shipment(payload: ShipmentCreate, session: AsyncSession = Depends(get_session), core: Core = Depends(get_core), user=Depends(get_current_user)):
     """Создать доставку. Номер генерируется автоматически, если не задан."""
-    data = payload.model_dump()
+    shipping.public_source_key(payload.source_key)
+    data = payload.model_dump(exclude={"invoice", "source_key"})
     data["weight_kg"] = Decimal(str(data["weight_kg"]))
     data["amount"] = Decimal(str(data["amount"]))
-    obj = Shipment(**data)
-    session.add(obj)
-    await session.flush()
+    obj = await shipping.create(session, core, payload.invoice, payload.source_key, data, user)
     if not obj.number:
         obj.number = f"ЛОГ-2026-{obj.id:04d}"
     await session.commit()
@@ -187,12 +201,18 @@ async def update_shipment(
     shipment_id: int,
     payload: StatusUpdate,
     core: Core = Depends(get_core),
-    session: AsyncSession = Depends(get_session),
-):
+    session: AsyncSession = Depends(get_session), user=Depends(get_current_user)):
     """Сменить статус доставки. При ``delivered`` — закрытие сделки (logistics → sales)."""
-    obj = await session.get(Shipment, shipment_id)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="Отгрузка не найдена")
+    obj = await shipping.locked(session, core, user, shipment_id, allow_delivered=True)
+    if payload.status not in {stage["id"] for stage in DELIVERY_STAGES}:
+        raise HTTPException(422, "Unknown delivery status")
+    if obj.status == payload.status:
+        return obj
+    if obj.status == DELIVERED_STATUS:
+        raise HTTPException(409, "Delivered history is terminal")
+    order = [stage["id"] for stage in DELIVERY_STAGES]
+    if order.index(payload.status) < order.index(obj.status):
+        raise HTTPException(409, "Delivery history cannot move backwards")
     obj.status = payload.status
     if payload.status == DELIVERED_STATUS:
         core.event_bus.emit(
@@ -227,8 +247,7 @@ async def create_carrier_order(
     shipment_id: int,
     payload: CarrierOrderRequest,
     core: Core = Depends(get_core),
-    session: AsyncSession = Depends(get_session),
-):
+    session: AsyncSession = Depends(get_session), user=Depends(get_current_user)):
     """Оформить заказ на доставку у перевозчика (DPD / Автолайт Экспресс / …, log-5).
 
     Прототип: фиксирует перевозчика и тариф (расход на доставку), генерирует
@@ -236,9 +255,7 @@ async def create_carrier_order(
     публикует ``logistics.carrier_order.created``. Реальный вызов API перевозчика
     (создание накладной и получение трек-номера) — Итерация 1.
     """
-    obj = await session.get(Shipment, shipment_id)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="Отгрузка не найдена")
+    obj = await shipping.locked(session, core, user, shipment_id)
 
     code = payload.carrier_code or obj.carrier_code
     name = payload.carrier or obj.carrier
@@ -284,16 +301,13 @@ async def update_tracking(
     shipment_id: int,
     payload: TrackingUpdate,
     core: Core = Depends(get_core),
-    session: AsyncSession = Depends(get_session),
-):
+    session: AsyncSession = Depends(get_session), user=Depends(get_current_user)):
     """Обновить статус трекинга от перевозчика (текстовый статус + ETA + трек-номер).
 
     Публикует ``logistics.delivery.tracking`` → офис видит состояние перевозки на
     карточке документа (matched по ``logistics_ref`` = ``number``).
     """
-    obj = await session.get(Shipment, shipment_id)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="Отгрузка не найдена")
+    obj = await shipping.locked(session, core, user, shipment_id)
     obj.tracking_status = payload.tracking_status
     if payload.eta is not None:
         obj.eta = payload.eta
@@ -487,6 +501,7 @@ def _company_cost_by_carrier(shipments) -> list[CarrierCostStat]:
 @router.get("/dashboard", response_model=DashboardOut)
 async def dashboard(session: AsyncSession = Depends(get_session)) -> DashboardOut:
     """KPI логистики: грузы в пути, на таможне, среднее время доставки, OTD, расходы."""
+    raise HTTPException(409, "organization_scope_incomplete")
     shipments = (await session.execute(select(Shipment))).scalars().all()
     imports = (await session.execute(select(ImportShipment))).scalars().all()
     carriers = (await session.execute(select(Carrier))).scalars().all()
@@ -535,6 +550,7 @@ async def dashboard(session: AsyncSession = Depends(get_session)) -> DashboardOu
 @router.get("/costs", response_model=CostReportOut)
 async def costs_report(session: AsyncSession = Depends(get_session)) -> CostReportOut:
     """Отчёт по расходам на перевозку (log-8): всего, компания/клиент, по перевозчикам."""
+    raise HTTPException(409, "organization_scope_incomplete")
     shipments = (await session.execute(select(Shipment))).scalars().all()
     imports = (await session.execute(select(ImportShipment))).scalars().all()
 
@@ -630,16 +646,13 @@ async def update_carrier_tariff(
 async def quote_shipment(
     shipment_id: int,
     payload: QuoteRequest,
-    session: AsyncSession = Depends(get_session),
-):
+    session: AsyncSession = Depends(get_session), core: Core = Depends(get_core), user=Depends(get_current_user)):
     """Котировки доставки по всем перевозчикам зоны — расчёт из справочника тарифов.
 
     Заменяет статичные числа в модалке «Оформление доставки» расчётом ``quote_tariff``
     (вилки веса, забор, наложка, страховка). Сортировка — по итоговой стоимости.
     """
-    obj = await session.get(Shipment, shipment_id)
-    if obj is None:
-        raise HTTPException(status_code=404, detail="Отгрузка не найдена")
+    obj = await shipping.read(session, core, user, shipment_id)
     weight = payload.weight_kg if payload.weight_kg is not None else float(obj.weight_kg or 0)
 
     zone = (
@@ -779,17 +792,8 @@ async def _expected_for(session: AsyncSession, zone_code: str, weight_kg: float,
 
 @router.post("/costs/audit/seed", response_model=list[AuditEntryOut])
 async def seed_audit(session: AsyncSession = Depends(get_session)):
-    """Заполнить демо-расхождения аудита счетов (идемпотентно по shipment_code)."""
-    existing = {
-        a.shipment_code for a in (await session.execute(select(FreightAuditLog))).scalars().all()
-    }
-    for item in seeds.AUDIT_SEED:
-        if item["shipment_code"] not in existing:
-            session.add(FreightAuditLog(**item))
-    await session.commit()
-    return (
-        await session.execute(select(FreightAuditLog).order_by(FreightAuditLog.id.desc()))
-    ).scalars().all()
+    """Audit attribution is not yet available for organization-scoped access."""
+    raise HTTPException(409, "organization_scope_incomplete")
 
 
 @router.post("/costs/audit", response_model=AuditEntryOut, status_code=201)
@@ -798,63 +802,14 @@ async def create_audit_entry(
     core: Core = Depends(get_core),
     session: AsyncSession = Depends(get_session),
 ):
-    """Зарегистрировать счёт перевозчика и сверить с ожидаемым тарифом.
-
-    Если ``expected_amount`` не задан — считается из ``carrier_tariffs`` по
-    ``zone_code``+``weight_kg``. ``variance = invoice - expected``; расхождение
-    создаёт запись к разбору.
-    """
-    expected = payload.expected_amount
-    if expected is None:
-        expected = await _expected_for(
-            session, payload.zone_code, payload.weight_kg, payload.carrier_code
-        )
-        if expected is None:
-            raise HTTPException(
-                status_code=422,
-                detail="Не задан expected_amount и нет тарифа для зоны/перевозчика",
-            )
-    variance = round(payload.invoice_amount - expected, 2)
-    obj = FreightAuditLog(
-        shipment_code=payload.shipment_code,
-        carrier_code=payload.carrier_code,
-        invoice_amount=Decimal(str(payload.invoice_amount)),
-        expected_amount=Decimal(str(expected)),
-        variance=Decimal(str(variance)),
-        reason=payload.reason,
-        status="open" if variance != 0 else "closed",
-    )
-    session.add(obj)
-    await session.flush()
-    # переплата перевозчика (variance>0) = деньги к возврату → finance (проекция на стороне finance)
-    # LOG3-2: деньги — str(BYN), не float (дрейф копеек у finance Numeric).
-    if variance > 0:
-        core.event_bus.emit(
-            session,
-            "logistics.freight.audit_refund",
-            {"shipment_code": obj.shipment_code, "carrier": obj.carrier_code,
-             "amount": str(obj.variance), "entity_ref": f"audit:{obj.id}"},
-        )
-    await session.commit()
-    await session.refresh(obj)
-    return obj
+    """Audit attribution is not yet available for organization-scoped access."""
+    raise HTTPException(409, "organization_scope_incomplete")
 
 
 @router.get("/costs/audit", response_model=AuditReportOut)
 async def costs_audit(period: str = "", session: AsyncSession = Depends(get_session)) -> AuditReportOut:
-    """Сводка аудита счетов: проверено, расхождений, сумма к возврату, позиции."""
-    rows = (
-        await session.execute(select(FreightAuditLog).order_by(FreightAuditLog.id.desc()))
-    ).scalars().all()
-    discrepancies = [r for r in rows if r.variance and float(r.variance) != 0]
-    to_recover = sum(float(r.variance) for r in discrepancies if float(r.variance) > 0)
-    return AuditReportOut(
-        period=period or seeds.SCORECARD_PERIOD,
-        checked=len(rows),
-        discrepancies=len(discrepancies),
-        to_recover=round(to_recover, 2),
-        items=[AuditEntryOut.model_validate(r) for r in rows],
-    )
+    """Audit attribution is not yet available for organization-scoped access."""
+    raise HTTPException(409, "organization_scope_incomplete")
 
 
 # --- Парк машин и пригодность груза (Блок 2) -----------------------------------
@@ -1023,7 +978,10 @@ async def _get_rfq(session: AsyncSession, rfq_id: int) -> CarrierRfq:
     rfq = await session.get(CarrierRfq, rfq_id)
     if rfq is None:
         raise HTTPException(status_code=404, detail="Тендер не найден")
-    return rfq
+    binding = await session.get(RfqInvoiceBinding, rfq_id)
+    if binding is None:
+        raise HTTPException(404, "Shipping record not found")
+    return shipping.expose(rfq, binding)
 
 
 def _rfq_card(r: CarrierRfq) -> FunnelCard:
@@ -1036,27 +994,26 @@ def _rfq_card(r: CarrierRfq) -> FunnelCard:
 
 
 @router.get("/rfqs", response_model=list[RfqOut])
-async def list_rfqs(session: AsyncSession = Depends(get_session)):
+async def list_rfqs(session: AsyncSession = Depends(get_session), core: Core = Depends(get_core), user=Depends(get_current_user)):
     """Тендеры на перевозку (плоский список)."""
-    return (await session.execute(select(CarrierRfq).order_by(CarrierRfq.id.desc()))).scalars().all()
+    return await shipping.rows(session, core, user, rfq=True)
 
 
 @router.get("/rfqs/board", response_model=FunnelBoardOut)
-async def rfqs_board(session: AsyncSession = Depends(get_session)) -> FunnelBoardOut:
+async def rfqs_board(session: AsyncSession = Depends(get_session), core: Core = Depends(get_core), user=Depends(get_current_user)) -> FunnelBoardOut:
     """Воронка тендеров: черновик → разослан → сбор → переговоры → выбран → договор."""
-    rows = (await session.execute(select(CarrierRfq))).scalars().all()
+    rows = await shipping.rows(session, core, user, rfq=True)
     return build_board(TENDER_STAGES, rows, _rfq_card, stage_of=lambda r: r.status)
 
 
 @router.post("/rfqs", response_model=RfqOut, status_code=201)
-async def create_rfq(payload: RfqCreate, session: AsyncSession = Depends(get_session)):
+async def create_rfq(payload: RfqCreate, session: AsyncSession = Depends(get_session), core: Core = Depends(get_core), user=Depends(get_current_user)):
     """Создать тендер на перевозку (наёмный перевозчик по договору)."""
-    data = payload.model_dump()
+    shipping.public_source_key(payload.source_key)
+    data = payload.model_dump(exclude={"invoice", "source_key"})
     data["weight_kg"] = Decimal(str(data["weight_kg"]))
     data["declared_value"] = Decimal(str(data["declared_value"]))
-    obj = CarrierRfq(**data)
-    session.add(obj)
-    await session.flush()
+    obj = await shipping.create(session, core, payload.invoice, payload.source_key, data, user, rfq=True)
     if not obj.number:
         obj.number = f"ТНД-2026-{obj.id:04d}"
     await session.commit()
@@ -1247,7 +1204,7 @@ async def rfq_recommendation(rfq_id: int, session: AsyncSession = Depends(get_se
 
 @router.post("/rfqs/bid/{token}", response_model=BidOut, status_code=201)
 async def public_bid(
-    token: str, payload: PublicBidCreate, session: AsyncSession = Depends(get_session)
+    token: str, payload: PublicBidCreate, session: AsyncSession = Depends(get_session), core: Core = Depends(get_core)
 ):
     """Публичный приём ставки перевозчика по токену из ссылки-приглашения (без авторизации).
 
@@ -1260,7 +1217,15 @@ async def public_bid(
     ).scalars().first()
     if inv is None:
         raise HTTPException(status_code=404, detail="Приглашение по токену не найдено")
-    rfq = await _get_rfq(session, inv.rfq_id)
+    bound = await session.get(RfqInvoiceBinding, inv.rfq_id)
+    if bound is None:
+        raise HTTPException(409, "organization_scope_incomplete")
+    await shipping.source(session, core, shipping.identity(bound))
+    await shipping.gate(session)
+    rfq = await session.scalar(select(CarrierRfq).where(CarrierRfq.id == inv.rfq_id).with_for_update()
+                               .execution_options(populate_existing=True))
+    if rfq.shipment_id is not None or rfq.status in {"awarded", "contracted", "withdrawn"}:
+        raise HTTPException(409, "Tender already awarded")
     obj = CarrierBid(
         rfq_id=inv.rfq_id, carrier_code=inv.carrier_code, price=Decimal(str(payload.price)),
         eta_days=payload.eta_days, vehicle_class=payload.vehicle_class,
@@ -1316,8 +1281,7 @@ async def award_rfq(
     rfq_id: int,
     payload: AwardRequest,
     core: Core = Depends(get_core),
-    session: AsyncSession = Depends(get_session),
-):
+    session: AsyncSession = Depends(get_session), user=Depends(get_current_user)):
     """Выбрать перевозчика и заключить договор: создаётся отгрузка, тендер закрыт.
 
     С ``carrier_code`` — конкретный перевозчик. Без него выбор по ``strategy``:
@@ -1325,7 +1289,14 @@ async def award_rfq(
     по scorecard). Создаётся ``Shipment`` (``assigned``); тендер → ``contracted``;
     публикуется ``logistics.contract.signed``.
     """
-    rfq = await _get_rfq(session, rfq_id)
+    rfq = await shipping.locked(session, core, user, rfq_id, rfq=True, allow_award_replay=True)
+    if rfq.shipment_id is not None:
+        ship = await shipping.read(session, core, user, rfq.shipment_id)
+        if payload.carrier_code and payload.carrier_code != ship.carrier_code:
+            raise HTTPException(409, "RFQ was awarded to another carrier")
+        return AwardOut(rfq_id=rfq.id, status=rfq.status, carrier_code=ship.carrier_code,
+            carrier=ship.carrier, price=float(ship.amount), shipment_id=ship.id, shipment_number=ship.number)
+    bound = await session.get(RfqInvoiceBinding, rfq_id)
     bids = (
         await session.execute(select(CarrierBid).where(CarrierBid.rfq_id == rfq_id))
     ).scalars().all()
@@ -1339,7 +1310,7 @@ async def award_rfq(
     else:
         chosen = min(bids, key=lambda b: float(b.price))
 
-    ship = Shipment(
+    data = dict(
         customer=rfq.office_doc_ref or rfq.number or f"Тендер {rfq_id}",
         cargo=rfq.cargo, weight_kg=rfq.weight_kg or Decimal("0"),
         route_from=rfq.route_from, route_to=rfq.route_to,
@@ -1347,8 +1318,7 @@ async def award_rfq(
         amount=chosen.price, deal_id=rfq.deal_id, status="assigned",
         tracking_status="Договор заключён, ожидаем забор",
     )
-    session.add(ship)
-    await session.flush()
+    ship = await shipping.create(session, core, shipping.identity(bound), f"rfq-award:{rfq_id}", data, user)
     if not ship.number:
         ship.number = f"ЛОГ-2026-{ship.id:04d}"
 
@@ -1378,6 +1348,7 @@ async def award_rfq(
 @router.post("/rfqs/seed", response_model=RfqOut)
 async def seed_rfq(session: AsyncSession = Depends(get_session)):
     """Демо-тендер на перевозку с приглашениями и предложениями (идемпотентно по номеру)."""
+    raise HTTPException(409, "organization_scope_incomplete")
     existing = (
         await session.execute(
             select(CarrierRfq).where(CarrierRfq.number == seeds.RFQ_DEMO["number"])
@@ -1414,6 +1385,7 @@ async def cost_insights(
 
     Считается поверх уже собранных данных (тарифы/ставки/аудит) — без новых таблиц.
     """
+    raise HTTPException(409, "organization_scope_incomplete")
     tariffs = (await session.execute(select(CarrierTariff))).scalars().all()
     zone_name = {
         z.code: z.name for z in (await session.execute(select(Zone))).scalars().all()
@@ -1459,3 +1431,51 @@ async def cost_insights(
     return CostInsightsOut(**analytics.summarize(
         weight_kg, zones, tenders, to_recover, import_freight=import_freight,
     ))
+
+
+@router.get("/intakes/{intake_id}")
+async def intake_status(intake_id: int, session=Depends(get_session), core=Depends(get_core), user=Depends(get_current_user)):
+    shipping.permission(core, user, "intake.resolve")
+    producer = getattr(core.services, "shipping_producer", None)
+    if producer is None:
+        raise HTTPException(503, "Persisted producer association service unavailable")
+    row = await session.get(ShipmentIntake, intake_id)
+    if row is None:
+        raise HTTPException(404, "Intake not found")
+    await producer.authorize_shipping_intake(session, source_kind=row.source_kind, source_key=row.source_key, user=user)
+    return {"id": row.id, "state": row.state, "pending_reason": row.pending_reason}
+
+
+@router.post("/intakes/{intake_id}/resolve")
+async def resolve_intake(intake_id: int, session=Depends(get_session), core=Depends(get_core), user=Depends(get_current_user)):
+    await intake_status(intake_id, session, core, user)
+    row = await session.get(ShipmentIntake, intake_id)
+    producer = core.services.shipping_producer
+    if "schema_version" in row.snapshot or "source" in row.snapshot:
+        from modules.logistics.canonical_intakes import receive as canonical_receive
+        row = await canonical_receive(session, core.services, row.source_kind, row.snapshot, user=user, core=core,
+                                      expected_intake_id=intake_id)
+        if row.state != "resolved":
+            raise HTTPException(409, "persisted_source_required")
+        await session.commit()
+        return {"id": row.id, "state": row.state, "shipment_id": row.shipment_id, "rfq_id": row.rfq_id}
+    exact = await producer.resolve_shipping_source(session, source_kind=row.source_kind,
+        source_key=row.source_key, source_revision=row.source_revision)
+    if exact is None:
+        raise HTTPException(409, "persisted_source_required")
+    exact = shipping.ExactInvoiceIdentity.model_validate(exact)
+    await shipping.accounting(core).source_owner_authority(session, exact.organization_id, user)
+    await shipping.source(session, core, exact, user, operation="historical_claim")
+    current = await producer.resolve_shipping_source(session, source_kind=row.source_kind,
+        source_key=row.source_key, source_revision=row.source_revision)
+    if current is None or shipping.ExactInvoiceIdentity.model_validate(current) != exact:
+        raise HTTPException(409, "Producer association changed")
+    await shipping.gate(session)
+    row = await session.scalar(select(ShipmentIntake).where(ShipmentIntake.id == intake_id).with_for_update()
+                               .execution_options(populate_existing=True))
+    if row.state == "resolved":
+        await shipping.resolved_intake_attribution(session, row, exact)
+    else:
+        await shipping.promote(session, core, row, exact, user)
+    await session.commit()
+    return {"id": row.id, "state": row.state, "shipment_id": row.shipment_id, "rfq_id": row.rfq_id}

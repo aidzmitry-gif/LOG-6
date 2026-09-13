@@ -7,7 +7,7 @@ AI-координация логистики (log-6) — Итерация 1, в 
 """
 from __future__ import annotations
 
-from core.runtime.contract import ModuleContract, Widget
+from core.runtime.contract import ModuleContract, Permission, Role, Widget
 from core.runtime.core import Core
 from modules.logistics import routes
 from modules.logistics.events import (
@@ -15,6 +15,7 @@ from modules.logistics.events import (
     on_office_delivery_requested,
     on_procurement_received,
 )
+from modules.logistics.gateway import ShipmentGateway
 
 
 class LogisticsModule(ModuleContract):
@@ -23,6 +24,14 @@ class LogisticsModule(ModuleContract):
     api_prefix = "/logistics"
 
     def register(self, core: Core) -> None:
+        core.services.logistics = ShipmentGateway(core.services)
+        permissions = ("logistics.shipment.read", "logistics.shipment.write")
+        for code in (*permissions, "logistics.intake.resolve"):
+            core.declare_permissions([Permission(code)])
+        core.declare_role(Role("logistics", permissions))
+        # Resolve is separately guarded by the producer's current record access.
+        for role in ("logistics", "finance"):
+            core.declare_role(Role(role, ("logistics.intake.resolve",)))
         core.include_router(routes.router, prefix=self.api_prefix)
         # межмодульная связь: заказ из sales → отгрузка в logistics (§2.5)
         core.subscribe("sales.document.posted", on_document_posted)
