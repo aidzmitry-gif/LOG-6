@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, select
 
@@ -28,12 +28,25 @@ class ImportFreightReview(BaseModel):
 class OwnedCostReview(BaseModel):
     version: Literal[1] = 1
     organization_id: int
+    principal: str = Field(min_length=1)
     status: Literal["partial"] = "partial"
     complete_cost_coverage: Literal[False] = False
     source: Literal["explicit_own_logistics_imports"] = "explicit_own_logistics_imports"
     posting_status: Literal["not_verified"] = "not_verified"
     unavailable_sections: tuple[Literal["tariffs", "tenders", "audit"], ...] = ("tariffs", "tenders", "audit")
     import_freight: ImportFreightReview
+
+
+class CostOrganization(BaseModel):
+    id: int = Field(gt=0)
+    name: str = Field(min_length=1)
+    unp: str
+
+
+class CostOrganizations(BaseModel):
+    version: Literal[1] = 1
+    principal: str = Field(min_length=1)
+    items: list[CostOrganization]
 
 
 @dataclass
@@ -77,16 +90,31 @@ class FreightAccumulator:
 router = APIRouter()
 
 
-@router.get("/organizations/{org_id}/cost-insights", response_model=OwnedCostReview)
-async def owned_cost_insights(
-    org_id: int = Path(gt=0), session=Depends(get_session), core=Depends(get_core),
+def source_access(core, name):
+    gateway = getattr(core.services, "accounting", None)
+    method = getattr(gateway, name, None)
+    if not callable(method):
+        raise HTTPException(503, "accounting_source_access_unavailable")
+    return method
+
+
+@router.get("/cost-organizations", response_model=CostOrganizations)
+async def cost_organizations(
+    response: Response, session=Depends(get_session), core=Depends(get_core),
     user=Depends(require_permission("logistics.shipment.read")),
 ):
-    gateway = getattr(core.services, "accounting", None)
-    member = getattr(gateway, "source_member", None)
-    if not callable(member):
-        raise HTTPException(503, "accounting_source_access_unavailable")
-    await member(session, org_id, user)
+    items = await source_access(core, "source_organizations")(session, user)
+    response.headers["Cache-Control"] = "private, no-store"
+    return CostOrganizations(principal=user.keycloak_user_id or user.username,
+        items=[{**item, "unp": item.get("unp") or ""} for item in items])
+
+
+@router.get("/organizations/{org_id}/cost-insights", response_model=OwnedCostReview)
+async def owned_cost_insights(
+    response: Response, org_id: int = Path(gt=0), session=Depends(get_session), core=Depends(get_core),
+    user=Depends(require_permission("logistics.shipment.read")),
+):
+    principal = await source_access(core, "source_member")(session, org_id, user)
     statement = select(ImportShipment.stage, ImportShipment.amount).join(SourceBinding, and_(
         SourceBinding.source_type == "logistics_import", SourceBinding.source_id == ImportShipment.id,
         SourceBinding.organization_id == org_id, SourceBinding.ownership == "own",
@@ -98,4 +126,5 @@ async def owned_cost_insights(
             summary.add(stage, amount)
     finally:
         await rows.close()
-    return OwnedCostReview(organization_id=org_id, import_freight=summary.result())
+    response.headers["Cache-Control"] = "private, no-store"
+    return OwnedCostReview(organization_id=org_id, principal=principal, import_freight=summary.result())
