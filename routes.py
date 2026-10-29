@@ -39,6 +39,7 @@ from modules.logistics.models import (
     ShipmentIntake,
     Zone,
 )
+from modules.logistics.owned_costs import router as owned_costs_router
 from modules.logistics.schemas import (
     CARRIERS_RB,
     AuditEntryCreate,
@@ -99,6 +100,7 @@ async def rfq_access(request: Request, session=Depends(get_session), core=Depend
 
 
 router = APIRouter(tags=["logistics"], dependencies=[Depends(rfq_access)])
+router.include_router(owned_costs_router)
 
 DELIVERED_STATUS = "delivered"  # доставка завершена → закрытие сделки (logistics → sales)
 ASSIGNED_STATUS = "assigned"    # перевозчик назначен / заказ у перевозчика оформлен
