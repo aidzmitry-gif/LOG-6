@@ -62,6 +62,12 @@ def withdrawable(snapshot):
 
 
 class ShipmentGateway:
+    async def shipping_source_status(self, session, *, source, payload_sha256, expected_association):
+        from modules.logistics.canonical_intakes import read_status
+
+        return await read_status(session, source=source, payload_sha256=payload_sha256,
+                                 expected_association=expected_association)
+
     def __init__(self, services=None):
         self.services = services
 
