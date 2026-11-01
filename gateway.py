@@ -62,6 +62,59 @@ def withdrawable(snapshot):
 
 
 class ShipmentGateway:
+    async def office_shipping_projection_context(self, session, *, intake_id=None, rfq_id=None, shipment_id=None):
+        from sqlalchemy import or_
+
+        from core.services.shipping_payload import canonical_shipping_payload
+        from modules.logistics.canonical_intakes import _shipment_status
+
+        selectors = [value for value in (intake_id, rfq_id, shipment_id) if value is not None]
+        if len(selectors) != 1 or type(selectors[0]) is not int or selectors[0] <= 0:
+            raise HTTPException(422, "One positive saved shipping ID is required")
+        with session.no_autoflush:
+            shipment = None
+            query = select(ShipmentIntake).where(ShipmentIntake.source_kind == "office")
+            if intake_id is not None:
+                anchor = await session.get(ShipmentIntake, intake_id, populate_existing=True)
+                if anchor is None:
+                    raise HTTPException(409, "Saved shipping intake is missing")
+                if "schema_version" not in anchor.snapshot and "source" not in anchor.snapshot:
+                    return {"sources": [], "shipment": None}
+                model, hashed = canonical_shipping_payload(anchor.snapshot)
+                if (model.source.model_dump() != {"kind": anchor.source_kind, "key": anchor.source_key,
+                        "revision": anchor.source_revision} or hashed != anchor.request_digest):
+                    raise HTTPException(409, "Saved intake anchor attribution changed")
+                if anchor.state == "resolved":
+                    if (anchor.shipment_id is None) == (anchor.rfq_id is None):
+                        raise HTTPException(409, "Resolved intake must name one saved target")
+                    query = query.where(ShipmentIntake.rfq_id == anchor.rfq_id) if anchor.rfq_id is not None else query.where(
+                        ShipmentIntake.shipment_id == anchor.shipment_id)
+                else:
+                    if anchor.shipment_id is not None or anchor.rfq_id is not None:
+                        raise HTTPException(409, "Unresolved intake already names a target")
+                    query = query.where(ShipmentIntake.id == intake_id)
+            elif rfq_id is not None:
+                if await session.get(CarrierRfq, rfq_id, populate_existing=True) is None:
+                    raise HTTPException(409, "Saved RFQ is missing")
+                query = query.where(ShipmentIntake.rfq_id == rfq_id)
+            else:
+                row = await session.get(Shipment, shipment_id, populate_existing=True)
+                if row is None:
+                    raise HTTPException(409, "Saved shipment is missing")
+                shipment = _shipment_status(row)
+                awarded = select(CarrierRfq.id).where(CarrierRfq.shipment_id == shipment_id)
+                query = query.where(or_(ShipmentIntake.shipment_id == shipment_id, ShipmentIntake.rfq_id.in_(awarded)))
+            sources = []
+            for row in await session.scalars(query.order_by(ShipmentIntake.id).execution_options(populate_existing=True)):
+                if "schema_version" not in row.snapshot and "source" not in row.snapshot:
+                    continue  # Legacy noncanonical Office records retain their existing guards.
+                model, hashed = canonical_shipping_payload(row.snapshot)
+                source = {"kind": row.source_kind, "key": row.source_key, "revision": row.source_revision}
+                if model.source.model_dump() != source or row.request_digest != hashed:
+                    raise HTTPException(409, "Saved Office intake attribution changed")
+                sources.append({"intake_id": row.id, "source": source, "payload_sha256": hashed})
+            return {"sources": sources, "shipment": shipment}
+
     async def shipping_source_status(self, session, *, source, payload_sha256, expected_association):
         from modules.logistics.canonical_intakes import read_status
 

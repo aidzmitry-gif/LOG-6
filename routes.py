@@ -226,8 +226,8 @@ async def update_shipment(
         core.event_bus.emit(
             session,
             "logistics.delivery.delivered",
-            {"log_ref": obj.number, "number": obj.number, "carrier_name": obj.carrier,
-             "delivered_at": obj.eta or "", "entity_ref": obj.number},
+            {"shipment_id": obj.id, "log_ref": obj.number, "number": obj.number, "carrier_name": obj.carrier,
+             "delivered_at": "", "entity_ref": obj.number},
         )
         # логистика → финансы: тариф перевозчика = расход на фрахт (если задан)
         # LOG3-2: деньги — str(BYN) (finance ждёт Decimal(str(...))); leg='domestic'
@@ -239,6 +239,10 @@ async def update_shipment(
                  "amount": str(obj.amount), "leg": "domestic",
                  "entity_ref": f"shipment:{obj.id}"},
             )
+    if payload.status != DELIVERED_STATUS:
+        core.event_bus.emit(session, "logistics.delivery.tracking", {
+            "shipment_id": obj.id, "log_ref": obj.number, "number": obj.number,
+            "tracking_status": obj.tracking_status, "carrier_name": obj.carrier, "entity_ref": obj.number})
     await session.commit()
     await session.refresh(obj)
     return obj
@@ -318,7 +322,7 @@ async def update_tracking(
     core.event_bus.emit(
         session,
         "logistics.delivery.tracking",
-        {"log_ref": obj.number, "number": obj.number, "tracking_status": obj.tracking_status,
+        {"shipment_id": obj.id, "log_ref": obj.number, "number": obj.number, "tracking_status": obj.tracking_status,
          "carrier_name": obj.carrier, "eta": obj.eta or "", "entity_ref": obj.number},
     )
     await session.commit()
@@ -1459,6 +1463,9 @@ async def resolve_intake(intake_id: int, session=Depends(get_session), core=Depe
                                       expected_intake_id=intake_id)
         if row.state != "resolved":
             raise HTTPException(409, "persisted_source_required")
+        # Authorized retries also reconcile historical resolved Office cards.
+        # This event projects saved facts; canonical_receive alone owns fulfillment.
+        core.event_bus.emit(session, "logistics.intake.observed", {"intake_id": row.id, "state": row.state})
         await session.commit()
         return {"id": row.id, "state": row.state, "shipment_id": row.shipment_id, "rfq_id": row.rfq_id}
     exact = await producer.resolve_shipping_source(session, source_kind=row.source_kind,
